@@ -26,13 +26,22 @@ from torch_geometric.utils import (
 from torch_geometric.nn.dense.linear import Linear
 
 import src.models.utils.callbacks as callbacks
+import src.models.utils.common as common_utils
 
 
 class GNN_naive_framework:
     # Class initialization params
-    def __init__(self, update_node_module, device):
+    def __init__(self, 
+                 update_node_module, 
+                 device, 
+                 mask_node_fn:Optional[Callable] = None, 
+                 mask_node_attr:Optional[torch.Tensor] = None):
         self.device = device
         self.update_node_module = update_node_module.to(self.device)
+        
+        self.mask_node_fn = mask_node_fn
+        self.mask_node_attr = mask_node_attr
+
 
     # Compute the solution of the PDE on the points (x,y)
     def predict(self, node_attr, edge_index, edge_attr, **kwargs):
@@ -40,11 +49,19 @@ class GNN_naive_framework:
         edge_index = edge_index.to(self.device)
         edge_attr = edge_attr.to(self.device)
 
-        model_out = self.update_node_module(node_attr, edge_index, edge_attr, **kwargs)
+        if not((self.mask_node_fn is None) and (self.mask_node_attr is None)):
+            _node_attr = common_utils.replace_by_value(
+                node_attr,
+                mask_samples=self.mask_node_fn(node_attr),
+                mask_attr=self.mask_node_attr
+            )
+        else:
+            _node_attr = node_attr.clone()
+
+        model_out = self.update_node_module(_node_attr, edge_index, edge_attr, **kwargs)
         return model_out
 
     # Compute the loss function   
-
     def loss_function(self, node_attr, edge_index, edge_attr, labels, mask):
         node_attr = node_attr.to(self.device)
         edge_index = edge_index.to(self.device)

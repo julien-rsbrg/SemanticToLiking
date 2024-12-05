@@ -53,7 +53,8 @@ def convert_table_to_graph(
         complete_data_table:pd.DataFrame,
         node_attr_names:list[str],
         edge_attr_names:list[str],
-        node_label_names:list[str] = None) -> Data:
+        node_label_names:list[str] = None,
+        return_word_to_index:bool = False) -> Data:
     
     node_table = build_node_table(complete_data_table=complete_data_table,
                                   feature_names=node_attr_names)
@@ -102,4 +103,7 @@ def convert_table_to_graph(
         print("end Test function convert_table_to_graph")
     
     test_function(data_graph)
-    return data_graph
+    if return_word_to_index:
+        return data_graph, translater_word_to_index
+    else:
+        return data_graph

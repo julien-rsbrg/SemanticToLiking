@@ -51,14 +51,17 @@ def plot_errors_labels_comparison(model:GNN_naive_framework,graph:torch_geometri
 
     fig = go.Figure()
     fig.add_trace(go.Histogram(
-        x = preds)
+        x = errors)
     )
     fig.update_layout(
-        title="Residual depending on label value",
+        title="Residual hisogram",
         xaxis_title="Label",
         yaxis_title="Residual"
     )
     fig.show()
+
+    print("labels=",labels)
+    print("preds=",preds)
 
     if plot_attention_weights:
         matrix_alpha = to_dense_adj(adj, edge_attr = alpha).cpu().detach()

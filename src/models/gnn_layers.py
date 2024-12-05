@@ -38,6 +38,8 @@ class myGATConv(torch_geometric.nn.GATConv):
         edge_dim: Optional[int] = None,
         fill_value: Union[float, Tensor, str] = 'mean',
         bias: bool = True,
+        src_mask: Optional[torch.Tensor] = None,
+        dst_mask: Optional[torch.Tensor] = None,
         **kwargs,
     ):
         kwargs.setdefault('aggr', 'add')
@@ -54,6 +56,35 @@ class myGATConv(torch_geometric.nn.GATConv):
             bias=bias,
             **kwargs
         )
+        # In case we are operating in bipartite graphs, we apply separate
+        # transformations 'lin_src' and 'lin_dst' to source and target nodes:
+        self.lin = self.lin_src = self.lin_dst = None
+        if isinstance(in_channels, int) and (src_mask is None) and (dst_mask is None):
+            raise NotImplementedError() # should check forward() in that case
+            #self.lin = Linear(in_channels, heads * out_channels, bias=False,weight_initializer='glorot')
+        else:
+            assert not(isinstance(in_channels,int)), "in_channels Iterable if src_mask or dst_mask not None"
+
+            if src_mask is None:
+                src_in_channels = in_channels[0]
+                self.src_mask = torch.ones(src_in_channels,dtype=torch.bool)
+            else:
+                assert isinstance(src_mask,torch.Tensor) and src_mask.dtype == torch.bool
+                src_in_channels = int(torch.sum(src_mask))
+                self.src_mask = src_mask
+            
+            if dst_mask is None:
+                dst_in_channels = in_channels[1]
+                self.dst_mask = torch.ones(dst_in_channels,dtype=torch.bool)
+            else:
+                assert isinstance(dst_mask,torch.Tensor) and dst_mask.dtype == torch.bool
+                dst_in_channels = int(torch.sum(dst_mask))
+                self.dst_mask = dst_mask
+                        
+            self.lin_src = Linear(src_in_channels, heads * out_channels, False,
+                                    weight_initializer='glorot')            
+            self.lin_dst = Linear(dst_in_channels, heads * out_channels, False,
+                                  weight_initializer='glorot')
 
         # In case we are operating in bipartite graphs, we apply separate
         # transformations 'lin_src' and 'lin_dst' to source and target nodes:
@@ -62,12 +93,14 @@ class myGATConv(torch_geometric.nn.GATConv):
                                           bias=False, weight_initializer='glorot')
             self.lin_content_dst = self.lin_content_src
         else:
-            self.lin_content_src = Linear(in_channels[0], heads * out_channels, False,
+            self.lin_content_src = Linear(src_in_channels, heads * out_channels, False,
                                   weight_initializer='glorot')
-            self.lin_content_dst = Linear(in_channels[1], heads * out_channels, False,
+            self.lin_content_dst = Linear(dst_in_channels, heads * out_channels, False,
                                           weight_initializer='glorot')
-
+        
         self.reset_parameters()
+            
+        
 
     def forward(  # noqa: F811
         self,
@@ -75,7 +108,7 @@ class myGATConv(torch_geometric.nn.GATConv):
         edge_index: Adj,
         edge_attr: OptTensor = None,
         size: Size = None,
-        return_attention_weights: Optional[bool] = None,
+        return_attention_weights: Optional[bool] = None
     ) -> Union[
             Tensor,
             Tuple[Tensor, Tuple[Tensor, Tensor]],
@@ -95,6 +128,9 @@ class myGATConv(torch_geometric.nn.GATConv):
                 will additionally return the tuple
                 :obj:`(edge_index, attention_weights)`, holding the computed
                 attention weights for each edge. (default: :obj:`None`)
+            mask_use_for_inference (torch.Tensor(torch.bool), optional):
+                the nodes that we can use to infer about the other nodes. (default: :obj:`None`)
+
         """
         H, C = self.heads, self.out_channels
 
@@ -102,13 +138,14 @@ class myGATConv(torch_geometric.nn.GATConv):
         # transform source and target node features via separate weights:
         if isinstance(x, Tensor):
             assert x.dim() == 2, "Static graphs not supported in 'GATConv'"
-            x_edge_src = x_edge_dst = self.lin_src(x).view(-1, H, C)
+            x_edge_src = self.lin_src(x[...,self.src_mask]).view(-1, H, C)
+            x_edge_dst = self.lin_dst(x[...,self.dst_mask]).view(-1, H, C)
         else:  # Tuple of source and target node features:
             x_edge_src, x_edge_dst = x
             assert x_edge_src.dim() == 2, "Static graphs not supported in 'GATConv'"
-            x_edge_src = self.lin_src(x_edge_src).view(-1, H, C)
+            x_edge_src = self.lin_src(x_edge_src[...,self.src_mask]).view(-1, H, C)
             if x_edge_dst is not None:
-                x_edge_dst = self.lin_dst(x_edge_dst).view(-1, H, C)
+                x_edge_dst = self.lin_dst(x_edge_dst[...,self.dst_mask]).view(-1, H, C)
 
         x_edge = (x_edge_src, x_edge_dst)
 
@@ -117,19 +154,20 @@ class myGATConv(torch_geometric.nn.GATConv):
         # transform source and target node features via separate weights:
         if isinstance(x, Tensor):
             assert x.dim() == 2, "Static graphs not supported in 'GATConv'"
-            x_content_src = x_content_dst = self.lin_content_src(x).view(-1, H, C)
+            x_content_src = self.lin_content_src(x[...,self.src_mask]).view(-1, H, C)
+            x_content_dst = self.lin_content_dst(x[...,self.dst_mask]).view(-1, H, C)
         else:  # Tuple of source and target node features:
             x_content_src, x_content_dst = x
             assert x_content_src.dim() == 2, "Static graphs not supported in 'GATConv'"
-            x_content_src = self.lin_content_src(x_content_src).view(-1, H, C)
-            if x_content_dst is not None:
-                x_content_dst = self.lin_content_dst(x_content_dst).view(-1, H, C)
+            x_content_src = self.lin_content_src(x_content_src[...,self.src_mask]).view(-1, H, C)
+            if not(x_content_dst is  None):
+                x_content_dst = self.lin_content_dst(x_content_dst[...,self.dst_mask]).view(-1, H, C)
 
         x_content = (x_content_src, x_content_dst)
 
         # Next, we compute node-level attention coefficients, both for source
         # and target nodes (if present):
-        alpha_src = (0*x_edge_src * self.att_src).sum(dim=-1)
+        alpha_src = (x_edge_src * self.att_src).sum(dim=-1)
         alpha_dst = None if x_edge_dst is None else (x_edge_dst * self.att_dst).sum(-1)
         alpha = (alpha_src, alpha_dst)
 
@@ -156,7 +194,9 @@ class myGATConv(torch_geometric.nn.GATConv):
                         "'edge_index' in a 'SparseTensor' form")
 
         # edge_updater_type: (alpha: OptPairTensor, edge_attr: OptTensor)
-        alpha = self.edge_updater(edge_index, alpha=alpha, edge_attr=edge_attr,
+        alpha = self.edge_updater(edge_index, 
+                                  alpha=alpha, 
+                                  edge_attr=edge_attr,
                                   size=size)
 
         # propagate_type: (x: OptPairTensor, alpha: Tensor)
@@ -185,21 +225,34 @@ class myGATConv(torch_geometric.nn.GATConv):
                 return out, edge_index.set_value(alpha, layout='coo')
         else:
             return out
+        
     
+    def get_description_parameters():
+        pass
+
     def describe_parameters(self):
+        lin_content_src_params = [param for param in self.lin_content_src.parameters()][0]
+        print("raw parameter src for message content =", lin_content_src_params)
+
+        lin_content_dst_params = [param for param in self.lin_content_dst.parameters()][0]
+        print("raw parameter dst for message content =", lin_content_dst_params)
+
         lin_src_params = [param for param in self.lin_src.parameters()][0]
+        att_lin_src_params = lin_src_params * self.att_src
+        print("raw parameter src for edges weights =", lin_src_params)
+        print("attention src for edges weights = ", self.att_src)
+        print("attention x raw parameter src for edges weights =", att_lin_src_params)
+
         lin_dst_params = [param for param in self.lin_dst.parameters()][0]
-
-        src_att_lin_params = lin_src_params * self.att_src
-        dst_att_lin_params = lin_dst_params * self.att_dst
-        print("param_x_src, param_x_dst =", float(src_att_lin_params), float(dst_att_lin_params))
-
+        att_lin_dst_params = lin_dst_params * self.att_dst
+        print("raw parameter dst for edges weights =", lin_dst_params)
+        print("attention dst for edges weights = ", self.att_dst)
+        print("attention x raw parameter dst for edges weights =", att_lin_dst_params)
 
         lin_edge_params = [param for param in self.lin_edge.parameters()][0]
         att_lin_edge_params = lin_edge_params * self.att_edge
-        print("params_edge", att_lin_edge_params.squeeze())
+        print("attention dst for edges weights = ", self.att_edge)
+        print("attention x parameter edge for edges", att_lin_edge_params.squeeze())
 
         bias = [param for param in self.bias][0]
-        print(bias)
-
-        print()
+        print("bias =", bias)
