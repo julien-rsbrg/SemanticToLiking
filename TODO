@@ -1,1 +1,15 @@
 install torch-sparse
+
+
+TODO
+
+
+Prediction only from experienced nodes
+- Preproccessing graph removing connections
+
+
+Different clustering
+
+
+Model comparison:
+- K-means 

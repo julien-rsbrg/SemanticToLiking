@@ -70,6 +70,7 @@ class GNN_naive_framework:
         preds = self.predict(node_attr, edge_index, edge_attr)
 
         loss_fn = torch.nn.MSELoss()
+
         loss = loss_fn(preds[mask], labels[mask])
         return loss
 

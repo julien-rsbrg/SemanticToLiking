@@ -1,0 +1,2 @@
+participant,node_i,prediction_real_attr,prediction_sham_attr,label,last_train_mae
+1,0,-0.87355804,-0.87355804,-0.87726575,0.002306896960362792

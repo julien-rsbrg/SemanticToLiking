@@ -1,4 +1,5 @@
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+import pandas as pd
 
 import torch
 import torch.nn.functional as F
@@ -38,11 +39,17 @@ class myGATConv(torch_geometric.nn.GATConv):
         edge_dim: Optional[int] = None,
         fill_value: Union[float, Tensor, str] = 'mean',
         bias: bool = True,
-        src_mask: Optional[torch.Tensor] = None,
-        dst_mask: Optional[torch.Tensor] = None,
+        src_content_mask: Optional[torch.Tensor] = None,
+        src_edge_mask: Optional[torch.Tensor] = None,
+        dst_content_mask: Optional[torch.Tensor] = None,
+        dst_edge_mask: Optional[torch.Tensor] = None,
         **kwargs,
     ):
         kwargs.setdefault('aggr', 'add')
+        
+        self.lin = self.lin_src = self.lin_dst = None
+        self.lin_src_content = self.lin_src_edge = self.lin_dst_content = self.lin_dst_edge = None
+
         super().__init__(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -58,48 +65,78 @@ class myGATConv(torch_geometric.nn.GATConv):
         )
         # In case we are operating in bipartite graphs, we apply separate
         # transformations 'lin_src' and 'lin_dst' to source and target nodes:
-        self.lin = self.lin_src = self.lin_dst = None
-        if isinstance(in_channels, int) and (src_mask is None) and (dst_mask is None):
+        if isinstance(in_channels, int) and (src_content_mask is None) and (src_edge_mask is None) and (dst_content_mask is None) and (dst_edge_mask is None):
             raise NotImplementedError() # should check forward() in that case
             #self.lin = Linear(in_channels, heads * out_channels, bias=False,weight_initializer='glorot')
         else:
             assert not(isinstance(in_channels,int)), "in_channels Iterable if src_mask or dst_mask not None"
 
-            if src_mask is None:
-                src_in_channels = in_channels[0]
-                self.src_mask = torch.ones(src_in_channels,dtype=torch.bool)
+            # TODO: create function for this setup repeated 4 times
+            if src_content_mask is None:
+                src_content_in_channels = in_channels[0]
+                self.src_content_mask = torch.ones(src_content_in_channels,dtype=torch.bool)
             else:
-                assert isinstance(src_mask,torch.Tensor) and src_mask.dtype == torch.bool
-                src_in_channels = int(torch.sum(src_mask))
-                self.src_mask = src_mask
+                assert isinstance(src_content_mask,torch.Tensor) and src_content_mask.dtype == torch.bool
+                src_content_in_channels = int(torch.sum(src_content_mask))
+                self.src_content_mask = src_content_mask
             
-            if dst_mask is None:
-                dst_in_channels = in_channels[1]
-                self.dst_mask = torch.ones(dst_in_channels,dtype=torch.bool)
+            if src_edge_mask is None:
+                src_edge_in_channels = in_channels[0]
+                self.src_edge_mask = torch.ones(src_edge_in_channels,dtype=torch.bool)
             else:
-                assert isinstance(dst_mask,torch.Tensor) and dst_mask.dtype == torch.bool
-                dst_in_channels = int(torch.sum(dst_mask))
-                self.dst_mask = dst_mask
+                assert isinstance(src_edge_mask,torch.Tensor) and src_edge_mask.dtype == torch.bool
+                src_edge_in_channels = int(torch.sum(src_edge_mask))
+                self.src_edge_mask = src_edge_mask
+
+            if dst_content_mask is None:
+                dst_content_in_channels = in_channels[1]
+                self.dst_content_mask = torch.ones(dst_content_in_channels,dtype=torch.bool)
+            else:
+                assert isinstance(dst_content_mask,torch.Tensor) and dst_content_mask.dtype == torch.bool
+                dst_content_in_channels = int(torch.sum(dst_content_mask))
+                self.dst_content_mask = dst_content_mask
+            
+            if dst_edge_mask is None:
+                dst_edge_in_channels = in_channels[1]
+                self.dst_edge_mask = torch.ones(dst_edge_in_channels,dtype=torch.bool)
+            else:
+                assert isinstance(dst_edge_mask,torch.Tensor) and dst_edge_mask.dtype == torch.bool
+                dst_edge_in_channels = int(torch.sum(dst_edge_mask))
+                self.dst_edge_mask = dst_edge_mask
                         
-            self.lin_src = Linear(src_in_channels, heads * out_channels, False,
-                                    weight_initializer='glorot')            
-            self.lin_dst = Linear(dst_in_channels, heads * out_channels, False,
-                                  weight_initializer='glorot')
+            self.lin_src_edge = Linear(src_edge_in_channels, 
+                                       heads * out_channels, 
+                                       bias=False,
+                                       weight_initializer='glorot')            
+            self.lin_dst_edge = Linear(dst_edge_in_channels, 
+                                       heads * out_channels, 
+                                       bias=False,
+                                       weight_initializer='glorot')
 
         # In case we are operating in bipartite graphs, we apply separate
         # transformations 'lin_src' and 'lin_dst' to source and target nodes:
         if isinstance(in_channels, int):
-            self.lin_content_src = Linear(in_channels, heads * out_channels,
+            self.lin_src_content = Linear(in_channels, heads * out_channels,
                                           bias=False, weight_initializer='glorot')
-            self.lin_content_dst = self.lin_content_src
+            self.lin_dst_content = self.lin_src_content
         else:
-            self.lin_content_src = Linear(src_in_channels, heads * out_channels, False,
+            self.lin_src_content = Linear(src_content_in_channels, heads * out_channels, bias=False,
                                   weight_initializer='glorot')
-            self.lin_content_dst = Linear(dst_in_channels, heads * out_channels, False,
+            self.lin_dst_content = Linear(dst_content_in_channels, heads * out_channels, bias=False,
                                           weight_initializer='glorot')
         
         self.reset_parameters()
-            
+    
+    def reset_parameters(self):
+        super().reset_parameters()
+        if self.lin_src_content is not None:
+            self.lin_src_content.reset_parameters()
+        if self.lin_src_edge is not None:
+            self.lin_src_edge.reset_parameters()
+        if self.lin_dst_content is not None:
+            self.lin_dst_content.reset_parameters()
+        if self.lin_dst_edge is not None:
+            self.lin_dst_edge.reset_parameters()
         
 
     def forward(  # noqa: F811
@@ -138,46 +175,44 @@ class myGATConv(torch_geometric.nn.GATConv):
         # transform source and target node features via separate weights:
         if isinstance(x, Tensor):
             assert x.dim() == 2, "Static graphs not supported in 'GATConv'"
-            x_edge_src = self.lin_src(x[...,self.src_mask]).view(-1, H, C)
-            x_edge_dst = self.lin_dst(x[...,self.dst_mask]).view(-1, H, C)
+            x_src_edge = self.lin_src_edge(x[...,self.src_edge_mask]).view(-1, H, C)
+            x_dst_edge = self.lin_dst_edge(x[...,self.dst_edge_mask]).view(-1, H, C)
         else:  # Tuple of source and target node features:
-            x_edge_src, x_edge_dst = x
-            assert x_edge_src.dim() == 2, "Static graphs not supported in 'GATConv'"
-            x_edge_src = self.lin_src(x_edge_src[...,self.src_mask]).view(-1, H, C)
-            if x_edge_dst is not None:
-                x_edge_dst = self.lin_dst(x_edge_dst[...,self.dst_mask]).view(-1, H, C)
-
-        x_edge = (x_edge_src, x_edge_dst)
+            x_src_edge, x_dst_edge = x
+            assert x_src_edge.dim() == 2, "Static graphs not supported in 'GATConv'"
+            x_src_edge = self.lin_src_edge(x_src_edge[...,self.src_edge_mask]).view(-1, H, C)
+            if x_dst_edge is not None:
+                x_dst_edge = self.lin_dst_edge(x_dst_edge[...,self.dst_edge_mask]).view(-1, H, C)
 
         # CHANGE HERE: x features only for the message
         # We first transform the input node features. If a tuple is passed, we
         # transform source and target node features via separate weights:
         if isinstance(x, Tensor):
             assert x.dim() == 2, "Static graphs not supported in 'GATConv'"
-            x_content_src = self.lin_content_src(x[...,self.src_mask]).view(-1, H, C)
-            x_content_dst = self.lin_content_dst(x[...,self.dst_mask]).view(-1, H, C)
+            x_src_content = self.lin_src_content(x[...,self.src_content_mask]).view(-1, H, C)
+            x_dst_content = self.lin_dst_content(x[...,self.dst_content_mask]).view(-1, H, C)
         else:  # Tuple of source and target node features:
-            x_content_src, x_content_dst = x
-            assert x_content_src.dim() == 2, "Static graphs not supported in 'GATConv'"
-            x_content_src = self.lin_content_src(x_content_src[...,self.src_mask]).view(-1, H, C)
-            if not(x_content_dst is  None):
-                x_content_dst = self.lin_content_dst(x_content_dst[...,self.dst_mask]).view(-1, H, C)
+            x_src_content, x_dst_content = x
+            assert x_src_content.dim() == 2, "Static graphs not supported in 'GATConv'"
+            x_src_content = self.lin_content_src(x_src_content[...,self.src_mask]).view(-1, H, C)
+            if not(x_dst_content is  None):
+                x_dst_content = self.lin_content_dst(x_dst_content[...,self.dst_mask]).view(-1, H, C)
 
-        x_content = (x_content_src, x_content_dst)
+        x_content = (x_src_content, x_dst_content)
 
         # Next, we compute node-level attention coefficients, both for source
         # and target nodes (if present):
-        alpha_src = (x_edge_src * self.att_src).sum(dim=-1)
-        alpha_dst = None if x_edge_dst is None else (x_edge_dst * self.att_dst).sum(-1)
+        alpha_src = (x_src_edge * self.att_src).sum(dim=-1)
+        alpha_dst = None if x_dst_edge is None else (x_dst_edge * self.att_dst).sum(-1)
         alpha = (alpha_src, alpha_dst)
 
         if self.add_self_loops:
             if isinstance(edge_index, Tensor):
                 # We only want to add self-loops for nodes that appear both as
                 # source and target nodes:
-                num_nodes = x_edge_src.size(0)
-                if x_edge_dst is not None:
-                    num_nodes = min(num_nodes, x_edge_dst.size(0))
+                num_nodes = x_src_edge.size(0)
+                if x_dst_edge is not None:
+                    num_nodes = min(num_nodes, x_dst_edge.size(0))
                 num_nodes = min(size) if size is not None else num_nodes
                 edge_index, edge_attr = remove_self_loops(
                     edge_index, edge_attr)
@@ -227,8 +262,96 @@ class myGATConv(torch_geometric.nn.GATConv):
             return out
         
     
-    def get_description_parameters():
-        pass
+    def get_description_parameters(self):
+        def get_description_model(model,model_name:str):
+            parameters_spec = {}
+
+            new_params = [param.squeeze().detach().cpu() for param in model.parameters()]
+            new_params = [float(param) if param.numel() else None for param in new_params]
+
+            if len(new_params) == 0:
+                new_params.append(None)
+            
+            for param_id, param in enumerate(new_params):
+                    parameters_spec[f"{model_name}_{param_id:d}"] = [param]
+                
+            return parameters_spec
+
+        def get_description_tensor(tensor_to_describe,tensor_name:str):
+            parameters_spec = {}
+
+            new_params = [float(param.squeeze().detach().cpu()) for param in tensor_to_describe]
+
+            if len(new_params) == 0:
+                new_params.append(None)
+            
+            for param_id, param in enumerate(new_params):
+                    parameters_spec[f"{tensor_name}_{param_id:d}"] = [param]
+                
+            return parameters_spec
+            
+
+        parameters_spec = {}
+
+        if not(self.lin_src_content is None):
+            new_parameters_spec = get_description_model(self.lin_src_content,"src_content")
+            parameters_spec.update(new_parameters_spec)
+        
+        new_parameters_spec = get_description_tensor(self.att_src,"att_src_edge")
+        parameters_spec.update(new_parameters_spec)
+
+        if not(self.lin_src_edge is None):
+            new_parameters_spec = get_description_model(self.lin_src_edge,"src_edge")
+            if self.att_src.numel() == 1:
+                full_parameters_spec = {}
+                for k,v in new_parameters_spec.items():
+                    if v[0] is not None:
+                        full_parameters_spec["full_"+k] = float(self.att_src.squeeze())*v[0]
+                    else:
+                        full_parameters_spec["full_"+k] = None
+            parameters_spec.update(new_parameters_spec)
+            parameters_spec.update(full_parameters_spec)
+        
+        if not(self.lin_dst_content is None):
+            new_parameters_spec = get_description_model(self.lin_dst_content,"dst_content")
+            parameters_spec.update(new_parameters_spec)
+
+        new_parameters_spec = get_description_tensor(self.att_dst,"att_dst_edge")
+        parameters_spec.update(new_parameters_spec)
+
+        if not(self.lin_dst_edge is None):
+            new_parameters_spec = get_description_model(self.lin_dst_edge,"dst_edge")
+            if self.att_dst.numel() == 1:
+                full_parameters_spec = {}
+                for k,v in new_parameters_spec.items():
+                    if v[0] is not None:
+                        full_parameters_spec["full_"+k] = float(self.att_dst.squeeze())*v[0]
+                    else:
+                        full_parameters_spec["full_"+k] = None
+            parameters_spec.update(new_parameters_spec)
+            parameters_spec.update(full_parameters_spec)
+
+        new_parameters_spec = get_description_tensor(self.att_edge,"att_edge")
+        parameters_spec.update(new_parameters_spec)
+
+        if not(self.lin_edge is None):
+            new_parameters_spec = get_description_model(self.lin_edge,"edge")
+            if self.att_edge.numel() == 1:
+                full_parameters_spec = {}
+                for k,v in new_parameters_spec.items():
+                    if v[0] is not None:
+                        full_parameters_spec["full_"+k] = float(self.att_edge.squeeze())*v[0]
+                    else:
+                        full_parameters_spec["full_"+k] = None
+            parameters_spec.update(new_parameters_spec)
+            parameters_spec.update(full_parameters_spec)
+
+        new_parameters_spec = get_description_tensor(self.bias,"bias")
+        parameters_spec.update(new_parameters_spec)
+
+        return pd.DataFrame(parameters_spec)
+    
+
 
     def describe_parameters(self):
         lin_content_src_params = [param for param in self.lin_content_src.parameters()][0]
