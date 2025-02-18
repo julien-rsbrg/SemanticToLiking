@@ -12,8 +12,8 @@ sys.path.insert(0, pathlib.Path(__file__).parents[2].resolve().as_posix())
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'Time Series Forecasting Generic'
-copyright = '2023, Veolia Special Projects Asia'
+project = 'SemGen Project Data Analysis'
+copyright = ''
 author = 'Julien Rosenberger'
 release = '0.1'
 

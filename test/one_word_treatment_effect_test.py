@@ -13,9 +13,9 @@ from torch_geometric.data import Data
 
 from src.models.nn_layers import MLPModel
 from src.models.gnn_layers import myGATConv
-from src.models.frameworks import GNN_naive_framework
+from src.models.ML_frameworks import GNN_naive_framework
 import src.loading as loading
-import src.processing as processing
+import src.preprocessing.processing as processing
 
 from src.visualization.analyse_model import plot_errors_labels_comparison, get_prediction_table
 

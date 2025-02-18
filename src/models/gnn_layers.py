@@ -26,7 +26,7 @@ from torch_geometric.utils import (
 from torch_geometric.nn.dense.linear import Linear
 
 
-class myGATConv(torch_geometric.nn.GATConv):
+class MyGATConv(torch_geometric.nn.GATConv):
     def __init__(
         self,
         in_channels: Union[int, Tuple[int, int]],

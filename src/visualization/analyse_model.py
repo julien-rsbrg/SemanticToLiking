@@ -17,7 +17,7 @@ from torch_geometric.utils import (
             to_dense_adj
         )
 
-from src.models.frameworks import GNN_naive_framework
+from src.models.ML_frameworks import GNN_naive_framework
 
 def get_prediction_table(model:GNN_naive_framework,graph:torch_geometric.data.Data):
     preds = model.predict(graph.x,

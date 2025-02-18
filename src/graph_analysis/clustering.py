@@ -38,30 +38,3 @@ def cluster_nodes(G:nx.Graph, opposite_weight:bool = False, upper_quantile_remov
     connected_components_index = sorted(nx.connected_components(G_MST), key=len, reverse=True)
     return connected_components_index, G_MST
 
-def draw_clustering(G:nx.Graph,
-                    opposite_weight: bool = True,
-                    upper_quantile_removed:float=0.8,
-                    node_annotations: Optional[Iterable] = None,
-                    node_colors: Optional[Iterable] = None,
-                    node_color_label: Optional[str] = ""):
-    connected_components_index, G_MST = cluster_nodes(G, opposite_weight = opposite_weight, upper_quantile_removed = upper_quantile_removed)
-
-    words = list(translator_word_to_index.keys())
-    for nodes_index in connected_components_index:
-        new_component_words = []
-        for id in nodes_index:
-            new_component_words.append(words[id])
-        print("Component's words =", new_component_words)
-
-        n_nodes = len(nodes_index)
-        if n_nodes > 1: 
-            component_subgraph = G_MST.subgraph(nodes_index)
-            weights = list(nx.get_edge_attributes(component_subgraph,"weight").values())
-            weight_message = f"min weight = {np.min(weights):.3f}, max weights = {np.max(weights):.3f}"
-
-            draw_networkx_graph(
-                component_subgraph,
-                node_annotations=node_annotations,
-                node_colors = node_colors,
-                node_color_label = node_color_label,
-                title=f"Component with {n_nodes:d} nodes ("+ weight_message +")")

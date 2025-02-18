@@ -25,6 +25,7 @@ def convert_float_to_hsl(l,min_l,max_l,s=100,h=235):
 
 
 def convert_torch_to_networkx_graph(data: torch_geometric.data.Data, edge_attr_id: int = 0, to_undirected:bool|str = False):
+    # TODO: allow data not to have edge_attr
     G = to_networkx(data, to_undirected=to_undirected)
     weights = {e_pair:float(data.edge_attr[e,edge_attr_id]) for e,e_pair in enumerate(G.edges())} 
     nx.set_edge_attributes(G, values = weights, name = 'weight')
@@ -110,13 +111,14 @@ def draw_networkx_graph(
             line_width=2))
     
     # colors
-    node_text = []
-    for node in G.nodes():
-        # node_adjacencies.append(len(adjacencies[1]))
-        node_text.append(str(node_annotations[node])+f":{node_colors[node]:.2f}")
+    if not(node_annotations is None):
+        node_text = []
+        for node in G.nodes():
+            # node_adjacencies.append(len(adjacencies[1]))
+            node_text.append(str(node_annotations[node])+f":{node_colors[node]:.2f}")
 
-    # node_trace.marker.color = node_adjacencies
-    node_trace.text = node_text
+        # node_trace.marker.color = node_adjacencies
+        node_trace.text = node_text
 
     # plot
     fig = go.Figure(data=edge_traces+[node_trace],

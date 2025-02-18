@@ -17,7 +17,54 @@ class DataConverter(ABC):
     def transform():
         pass
 
-class ConverterDataFrameToTorchData(DataConverter):
+    def fit(self,*args,**kwargs):
+        return self
+    
+    def fit_transform(self,*args,**kwargs):
+        return self.transform(*args,**kwargs)
+
+
+class ConverterDataFrameToGraphDataFrame(DataConverter):
+    def __init__(self,
+                 node_attr_names:list[str],
+                 edge_attr_names:list[str],
+                 edge_name_id_sender_receiver:list[str],
+                 node_label_names:list[str]|None = None,
+                 directed_graph:bool = False,
+                 verbose:bool = True
+                 ):
+        self.node_attr_names = node_attr_names
+        self.edge_attr_names = edge_attr_names
+        self.edge_name_id_sender_receiver = edge_name_id_sender_receiver
+        self.node_label_names = node_label_names
+        self.directed_graph = directed_graph
+        self.verbose = verbose
+
+    def transform(self, node_table:pd.DataFrame, edge_table:pd.DataFrame):
+        node_attr = node_table[self.node_attr_names]
+
+        edge_index = edge_table[self.edge_name_id_sender_receiver]
+        edge_index = edge_index.to_numpy()
+        edge_index = edge_index.T
+
+        if not(self.directed_graph):
+            reversed_edge_index = edge_index[[1,0],:]
+            edge_index = np.concat([edge_index,reversed_edge_index],dim=1)
+
+        edge_attr = edge_table[self.edge_attr_names]
+
+        if not(self.directed_graph):
+            edge_attr = pd.concat([edge_attr,copy.deepcopy(edge_attr)],dim=0)
+
+        node_labels = None
+        if not(self.node_label_names is None):
+            node_labels = node_table[self.node_label_names]
+
+        return node_attr,edge_index,edge_attr,node_labels
+
+
+
+class ConverterGraphDataFrameToTorchData(DataConverter):
     def __init__(self,
                  node_attr_names:list[str],
                  edge_attr_names:list[str],
@@ -43,7 +90,7 @@ class ConverterDataFrameToTorchData(DataConverter):
 
         edge_attr = edge_table[self.edge_attr_names].values # n edges, n edge attr 
         edge_attr = torch.Tensor(edge_attr)
-        edge_attr = torch.concat([edge_attr,edge_attr],dim=0)
+        edge_attr = torch.concat([edge_attr,copy.deepcopy(edge_attr)],dim=0)
 
         node_train_mask = torch.ones(len(node_attr),dtype=torch.bool)
 
@@ -77,6 +124,7 @@ class ConverterDataFrameToTorchData(DataConverter):
             print("end Test function convert_table_to_graph")
         
         return data_graph
+
     
 
 class ConverterTorchDataToDataFrame(DataConverter):

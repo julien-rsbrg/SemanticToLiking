@@ -3,12 +3,20 @@ install torch-sparse
 
 TODO
 
+Remove attentional mechanism if wanted in GNN
+
+
 
 Prediction only from experienced nodes
-- Preproccessing graph removing connections
+- Preproccessing graph removing connections [OK]
 
 
 Different clustering
+- CutGroupSendersToGroupReceivers [OK]
+- KeepKNearestNeighbors [OK]
+
+
+
 
 
 Model comparison:

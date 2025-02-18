@@ -28,8 +28,8 @@
    :template: custom-module-template.rst                 
    :recursive:
 
-   src.featurizer
-   src.main
-   src.model_instantiator
-   src.utils
+   experiments
+   loading
+   models
+   pipeline
 

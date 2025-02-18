@@ -8,6 +8,10 @@ from abc import ABC, abstractmethod
 from typing import List
 import copy
 
+# Sample selectors
+class CreatorGraphPerParticipant():
+    pass
+
 # Edge Selectors
 
 class EdgeSelector(ABC):
