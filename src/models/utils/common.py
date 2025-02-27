@@ -1,7 +1,11 @@
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
+
 import torch
 from torch import Tensor
+
+
 
 def replace_by_value(
         original_tensor: Tensor,
@@ -30,3 +34,10 @@ def replace_by_value(
     new_tensor[mask_samples,mask_attr] = new_value
     
     return new_tensor
+
+
+
+def log_norm(x, mu, std):
+    """Compute the log pdf of x,
+    under a normal distribution with mean mu and standard deviation std."""
+    return -0.5 * torch.log(2*np.pi*std**2) - (0.5 * (1/(std**2))* (x-mu)**2)

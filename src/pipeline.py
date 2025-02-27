@@ -24,6 +24,8 @@ class GeneralizerRun:
         self._dataset_preprocessing_unfitted = copy.deepcopy(self.dataset_preprocessing)
         self._model_unfitted = copy.deepcopy(self.model)
     
+
+
     # TODO: all the graph preprocessors should be standardized for the same starting inputs (x,edge_index,edge_attr,y)
     def preprocess_graph(self,graph):
         new_graph = copy.deepcopy(graph)
@@ -34,13 +36,17 @@ class GeneralizerRun:
         
         return new_graph
 
+
+
     def generate_dataset(self,graphs):
         dataset = copy.deepcopy(graphs)
         for preprocessing in self.dataset_preprocessing:
             dataset = preprocessing.fit_transform(dataset)
         return dataset
     
-    def generate_dataset_from_scratch(self,data:list[tuple[pd.DataFrame]],):
+
+
+    def generate_dataset_from_scratch(self,data:list[tuple[pd.DataFrame]]):
         raw_dataset = []
         n_graphs = len(data)
         for i in range(n_graphs):
@@ -50,6 +56,8 @@ class GeneralizerRun:
         
         dataset = self.generate_dataset(raw_dataset)
         return dataset
+
+
 
     def fit_model(self,
                   data:list[tuple[pd.DataFrame]],
@@ -65,6 +73,7 @@ class GeneralizerRun:
         _,history = self.model.fit(dataset = dataset,val_dataset = val_dataset,**fit_model_kwargs)
         return self.model,history
     
+
     def predict(self,
                 data:tuple[pd.DataFrame],
                 **kwargs):

@@ -4,18 +4,8 @@ import numpy as np
 import torch
 from torch.autograd import Variable
 
+from src.models.utils.common import log_norm
 
-## utils ##
-
-def log_norm(x, mu, std):
-    """Compute the log pdf of x,
-    under a normal distribution with mean mu and standard deviation std."""
-    
-    return -0.5 * torch.log(2*np.pi*std**2) - (0.5 * (1/(std**2))* (x-mu)**2)
-
-
-
-## modules ##
 
 class VIModule(torch.nn.Module) :
 	"""
@@ -31,7 +21,7 @@ class VIModule(torch.nn.Module) :
 		self.loss_scale_factor = 1
 		
 	def add_loss(self, func) :
-		self._internal_losses.append(func)
+        self._internal_losses.append(func)
 		
 	def eval_losses(self) :
 		t_loss = 0
@@ -40,15 +30,16 @@ class VIModule(torch.nn.Module) :
 			t_loss = t_loss + l()
 			
 		return t_loss
-	
+    
+
 	def eval_all_losses(self) :
-		
-		t_loss = self.eval_losses()*self.loss_scale_factor
-		
-        # add the losses that are contained in this module's submodules (if they are VIModules)
-		for m in self.children() :
-			if isinstance(m, VIModule) :
-				t_loss = t_loss + m.eval_all_losses()*self.loss_scale_factor
+        t_loss = self.eval_losses()*self.loss_scale_factor
+		# add the losses that are contained in this module's submodules (if they are VIModules)
+		for m in self.children():
+            if isinstance(m, VIModule):
+                new_term = m.eval_all_losses()*self.loss_scale_factor
+                print("new_term",new_term)
+                t_loss = t_loss + new_term
 				
 		return t_loss
       
@@ -58,27 +49,35 @@ class MeanFieldGaussianFeedForward(VIModule):
     def __init__(self,
                  in_features,
                  out_features,
+                 prior_weights_m,
+                 prior_weights_s,
+                 likelihood_s = 5.5,
                  n_latent:int = 100,
-                 has_bias:bool = False):
+                 has_bias:bool = False,
+                 prior_bias_m:float = 0.0,
+                 prior_bias_s:float = 1.0,
+                 device = torch.device("cpu")):
         super(MeanFieldGaussianFeedForward, self).__init__()
         self.n_latent = n_latent # Number of latent samples
         self.softplus = torch.nn.Softplus()
         self.in_features = in_features
         self.out_features = out_features
+
+        self.device = device
         
         #The parameters we adjust during training.
-        self.weights_m = torch.nn.Parameter(torch.randn(in_features,out_features), requires_grad=True)
-        self.weights_s = torch.nn.Parameter(torch.randn(in_features,out_features), requires_grad=True)
+        self.weights_m = torch.nn.Parameter(torch.randn(in_features,out_features), requires_grad=True).to(self.device)
+        self.weights_s = torch.nn.Parameter(torch.randn(in_features,out_features), requires_grad=True).to(self.device)
         
         #create holders for prior mean and std, and likelihood std.
-        self.prior_weights_m = Variable(torch.randn(in_features,out_features), requires_grad=False)
-        self.prior_weights_s = Variable(torch.randn(in_features,out_features), requires_grad=False)
-        self.likelihood_s = Variable(torch.FloatTensor((1)), requires_grad=False)
+        self.prior_weights_m = Variable(torch.randn(in_features,out_features), requires_grad=False).to(self.device)
+        self.prior_weights_s = Variable(torch.randn(in_features,out_features), requires_grad=False).to(self.device)
+        self.likelihood_s = Variable(torch.FloatTensor((1)), requires_grad=False).to(self.device)
         
         #Set the prior and likelihood moments.
-        self.prior_weights_s.data.fill_(1.0)
-        self.prior_weights_m.data.fill_(0.9)
-        self.likelihood_s.data.fill_(5.5)
+        self.prior_weights_m.data.fill_(prior_weights_m)
+        self.prior_weights_s.data.fill_(prior_weights_s)
+        self.likelihood_s.data.fill_(likelihood_s)
 
         self.add_loss(self.compute_internal_KL_div_weights)
 
@@ -86,23 +85,27 @@ class MeanFieldGaussianFeedForward(VIModule):
         self.has_bias = has_bias
 
         if has_bias:
-            self.bias_m = torch.nn.Parameter(torch.randn(out_features), requires_grad=True)
-            self.bias_s = torch.nn.Parameter(torch.randn(out_features), requires_grad=True)
+            self.bias_m = torch.nn.Parameter(torch.randn(out_features), requires_grad=True).to(self.device)
+            self.bias_s = torch.nn.Parameter(torch.randn(out_features), requires_grad=True).to(self.device)
 
             #create holders
-            self.prior_bias_m = Variable(torch.randn(out_features), requires_grad=False)
-            self.prior_bias_s = Variable(torch.randn(out_features), requires_grad=False)
+            self.prior_bias_m = Variable(torch.randn(out_features), requires_grad=False).to(self.device)
+            self.prior_bias_s = Variable(torch.randn(out_features), requires_grad=False).to(self.device)
             
             #Set the prior moments.
-            self.prior_bias_m.data.fill_(0.0)
-            self.prior_weights_s.data.fill_(1.0)
+            self.prior_bias_m.data.fill_(prior_bias_m)
+            self.prior_weights_s.data.fill_(prior_bias_s)
 
             self.add_loss(self.compute_internal_KL_div_bias)
      
+    def __repr__(self):
+        return "MeanFieldGaussianFeedForward(\nin_features:{},\nout_features:{},\nn_latent:{},\nsoftplus:{},\ndevice:{})".format(
+              self.in_features,self.out_features,self.n_latent,self.softplus,self.device)
+
     
     def sample_weights(self):
         eps = np.random.normal(size=(self.n_latent,self.in_features,self.out_features))
-        eps = Variable(torch.FloatTensor(eps))
+        eps = Variable(torch.FloatTensor(eps)).to(self.device)
 
         self.w_noise_weights = eps
         self.sampled_weights = (eps*self.softplus(self.weights_s)).add(self.weights_m) 
@@ -110,7 +113,7 @@ class MeanFieldGaussianFeedForward(VIModule):
 
     def sample_biases(self):
         eps = np.random.normal(size=(self.n_latent,self.out_features))
-        eps = Variable(torch.FloatTensor(eps))
+        eps = Variable(torch.FloatTensor(eps)).to(self.device)
 
         self.w_noise_biases = eps
         self.sampled_biases = (eps*self.softplus(self.bias_s)).add(self.bias_m) 

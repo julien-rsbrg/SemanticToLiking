@@ -17,9 +17,9 @@ from torch_geometric.utils import (
             to_dense_adj
         )
 
-from src.models.ML_frameworks import GNN_naive_framework
+from src.models.ML_frameworks import GNNFramework
 
-def get_prediction_table(model:GNN_naive_framework,graph:torch_geometric.data.Data):
+def get_prediction_table(model:GNNFramework,graph:torch_geometric.data.Data):
     preds = model.predict(graph.x,
                           graph.edge_index,
                           graph.edge_attr)
@@ -34,7 +34,7 @@ def get_prediction_table(model:GNN_naive_framework,graph:torch_geometric.data.Da
     prediction_table["label"] = labels  
     return prediction_table
 
-def plot_errors_labels_comparison(model:GNN_naive_framework,graph:torch_geometric.data.Data,plot_attention_weights=False):
+def plot_errors_labels_comparison(model:GNNFramework,graph:torch_geometric.data.Data,plot_attention_weights=False):
     if plot_attention_weights:
         preds, (adj, alpha) = model.predict(graph.x,
                                     graph.edge_index,

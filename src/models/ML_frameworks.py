@@ -24,6 +24,8 @@ from torch_geometric.utils import (
     to_dense_adj
 )
 from torch_geometric.nn.dense.linear import Linear
+from torch.autograd import Variable
+
 
 import src.models.utils.callbacks as callbacks
 import src.models.utils.common as common_utils
@@ -43,7 +45,6 @@ class GNNFramework:
         self.mask_node_attr = mask_node_attr
 
 
-    # Compute the solution of the PDE on the points (x,y)
     def predict(self, node_attr, edge_index, edge_attr, **kwargs):
         node_attr = node_attr.to(self.device)
         edge_index = edge_index.to(self.device)
@@ -218,6 +219,27 @@ class GNNFramework:
 
 
 class BGNNFramework(GNNFramework):
+    def __init__(self, 
+                 update_node_module, 
+                 device, 
+                 likelihood_s:float = 0.5):
+        self.device = device
+        self.update_node_module = update_node_module.to(self.device)
+        self.update_node_module.device = self.device
+        
+        self.likelihood_s = Variable(torch.FloatTensor((1)), requires_grad=False).to(self.device)
+        self.likelihood_s.data.fill_(likelihood_s)
+
+
+    def predict(self, node_attr, edge_index, edge_attr, **kwargs):
+        node_attr = node_attr.to(self.device)
+        edge_index = edge_index.to(self.device)
+        edge_attr = edge_attr.to(self.device)
+
+        model_out = self.update_node_module(node_attr, edge_index, edge_attr, **kwargs)
+        return model_out
+    
+
     def loss_function(self, node_attr, edge_index, edge_attr, labels, mask):
         node_attr = node_attr.to(self.device)
         edge_index = edge_index.to(self.device)
@@ -225,9 +247,17 @@ class BGNNFramework(GNNFramework):
 
         preds = self.predict(node_attr, edge_index, edge_attr)
 
-        loss_fn = torch.nn.MSELoss()
+        loss = 0
 
-        loss = loss_fn(preds[mask], labels[mask])
+        likelihood = torch.mean(torch.sum(common_utils.log_norm(labels, preds, self.likelihood_s), 0))
+        print("likelihood:",likelihood)
+        loss -= likelihood
+
+        print("loss:",loss)
+
+        loss += self.update_node_module.eval_all_losses()
+        print("loss:",loss)
+
         return loss
 
 

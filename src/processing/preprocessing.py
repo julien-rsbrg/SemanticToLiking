@@ -12,6 +12,160 @@ import copy
 class CreatorGraphPerParticipant():
     pass
 
+# Node attribute transformation
+
+class NodeTransformation(ABC):
+    """
+    Operate on the nodes' attributes of a graph 
+
+    (Respect sklearn BaseEstimator and TransformerMixin baseline)
+
+    (Machine library agnostic)
+
+    Attributes
+    ----------
+    input_types : list[str]
+        --
+    verbose : bool
+        --
+    feature_names_in_ : list[str]
+        --
+    feature_names_out_ : list[str]
+        --
+
+    Methods
+    -------
+    fit()
+        --
+    transform()
+        --
+    fit_transform(X,y)
+        --
+    """
+
+    def __init__(self,  verbose: str):
+        """Instantiate a base selector"""
+        self.verbose = verbose
+        self.feature_names_in_ = None
+        self.feature_names_out_ = None
+
+    @property
+    def main_name(self) -> str:
+        """Main name of the transform function"""
+        pass
+    
+    @property
+    def params_repr(self) -> str:
+        """Representation of the parameters of the transform function"""
+        pass
+
+    @property
+    def name(self) -> str:
+        """Name of the transform function used for authentificate"""
+        return self.main_name + self.params_repr
+
+
+    def __repr__(self):
+        return self.name() 
+
+
+    def _check_types(self, x: pd.DataFrame,  y: pd.DataFrame | None = None):
+        assert (
+            isinstance(x, pd.DataFrame)
+        ), "Please input a DataFrame or let x None"
+        assert (
+            isinstance(y, pd.DataFrame) or y is None
+        ), "Please input a DataFrame or let y None"
+
+
+
+    def fit(self, x: pd.DataFrame,  y: pd.DataFrame | None = None):
+        """
+        Receive a graph and fit instantiation's attributes for edge selection.
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+
+        """
+        self._check_types(x,y)
+        return self
+
+
+    def transform(self, x: pd.DataFrame,  y: pd.DataFrame | None = None) -> tuple[pd.DataFrame,pd.DataFrame|None]:
+        """Directly returns the best features from what was found during fit and that are present in X.
+
+        Parameters
+        ----------
+        x : 
+            --
+
+        Returns
+        -------
+        """
+        self._check_types(x,y)
+        return x, y
+
+
+    def fit_transform(
+        self, 
+        x: pd.DataFrame,  
+        y: pd.DataFrame | None = None
+    ) -> tuple[pd.DataFrame,pd.DataFrame|None]:
+        """Receive new graph and remove some of its edges 
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+        """
+        self._check_types(x,y)
+
+        self.fit(x,y)
+        x, y = self.transform(x,y)
+        return x, y
+
+
+class SeparatePositiveNegative(NodeTransformation):
+    def __init__(self, verbose, feature_separated: str):
+        super().__init__(verbose)
+        
+        self.feature_separated = feature_separated
+
+    @property
+    def main_name(self) -> str:
+        """Main name of the transform function"""
+        return "SeparatePositiveNegative"
+    
+    @property
+    def params_repr(self) -> str:
+        """Representation of the parameters of the transform function"""
+        return self.feature_separated
+
+    def transform(self, x, y = None):
+        x,y = super().transform(x, y)
+
+        def transform_separate_feature(data:pd.DataFrame, feature:str, replace_value:float = 0.0,threshold:float = 0.0):
+            new_data = copy.deepcopy(data)
+            new_data[feature+"_pos"] = replace_value
+            new_data[feature+"_neg"] = replace_value
+
+            mask_pos = new_data[feature] > threshold
+            new_data.loc[mask_pos,feature+"_pos"] = new_data.loc[mask_pos,feature]
+            new_data.loc[~mask_pos,feature+"_neg"] = new_data.loc[~mask_pos,feature] 
+
+            return new_data
+
+        new_x = transform_separate_feature(x, self.feature_separated)
+
+        return new_x, y
+    
+
+
+
 # Edge Selectors
 
 class EdgeSelector(ABC):
@@ -161,7 +315,7 @@ class CutGroupSendersToGroupReceivers(EdgeSelector):
     def transform(self, 
                   edge_index:np.ndarray, 
                   edge_attr: pd.DataFrame | None = None, 
-                  x: pd.DataFrame | None = None, 
+                  x: pd.DataFrame = None, 
                   y: pd.DataFrame | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
         super().transform(edge_index, edge_attr, x, y)
         is_sender_selected = self.group_senders_mask_fn(x)
@@ -285,6 +439,7 @@ class PreprocessingPipeline():
                   edge_attr: pd.DataFrame | None = None, 
                   x: pd.DataFrame | None = None, 
                   y: pd.DataFrame | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
+        
         for edge_selector in self.edge_selectors:
             if self.verbose: 
                 print("PreprocessingPipeline transforms data with",edge_selector)
