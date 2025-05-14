@@ -93,8 +93,8 @@ def run(sim_used:str = "original", dst_file_path:str|None = None):
         # preprocessing 1 - experienced to not experienced
         print("Preprocessing 1")
         preprocessing_cut = preprocessing.CutGroupSendersToGroupReceivers(
-            group_senders_mask_fn= lambda x: x["experience"] > 50,
-            group_receivers_mask_fn= lambda x: x["experience"] <= 50,
+            group_senders_mask_fn= lambda x: x["experience"] > 0,
+            group_receivers_mask_fn= lambda x: x["experience"] <= 0,
         )
 
         new_edge_index, new_edge_attr, new_x, new_y = preprocessing_cut.fit_transform(
@@ -112,7 +112,7 @@ def run(sim_used:str = "original", dst_file_path:str|None = None):
         # preprocessing 2 - only not experienced predictions in training
         print("Preprocessing 2")
         node_train_mask = torch.ones(len(participant_graph.x),dtype=torch.bool)
-        node_train_mask[participant_graph.x[:,1]>50] = False
+        node_train_mask[participant_graph.x[:,1]>0] = False
         participant_graph.train_mask = node_train_mask
         participant_graph.val_mask = torch.zeros(len(participant_graph.x),dtype=torch.bool)
         
@@ -160,13 +160,13 @@ def run(sim_used:str = "original", dst_file_path:str|None = None):
         description_parameters_init = complete_model.update_node_module.get_description_parameters().copy()
         
         history = complete_model.train([participant_graph],
-                                       1,
+                                       10000,
                                        1,
                                        opt,
                                        scheduler,
                                        val_dataset=None,
                                        early_stopping_monitor="train_loss",
-                                       patience=200)
+                                       patience=2000)
 
         complete_model.predict(participant_graph.x,participant_graph.edge_index,participant_graph.edge_attr)
         description_parameters_trained = complete_model.update_node_module.get_description_parameters().copy()
@@ -185,7 +185,6 @@ def run(sim_used:str = "original", dst_file_path:str|None = None):
                 results["trained_"+param_name] = [description_parameters_trained[param_name][0]]
 
         pd.DataFrame(results).to_csv(dst_file_path,index=False)
-        return
             
         print(f"end participant_id/n_participants-1:{participant_id:d}/{len(participant_indices-1):d}")
 

@@ -29,6 +29,7 @@ from torch.autograd import Variable
 
 import src.models.utils.callbacks as callbacks
 import src.models.utils.common as common_utils
+import src.models.utils.weight_constrainers as weight_constrainers
 
 
 class GNNFramework:
@@ -45,10 +46,11 @@ class GNNFramework:
         self.mask_node_attr = mask_node_attr
 
 
-    def predict(self, node_attr, edge_index, edge_attr, **kwargs):
+    def predict(self, node_attr, edge_index, edge_attr = None, **kwargs):
         node_attr = node_attr.to(self.device)
         edge_index = edge_index.to(self.device)
-        edge_attr = edge_attr.to(self.device)
+        if not(edge_attr is None):
+            edge_attr = edge_attr.to(self.device)
 
         if not((self.mask_node_fn is None) and (self.mask_node_attr is None)):
             _node_attr = common_utils.replace_by_value(
@@ -66,7 +68,7 @@ class GNNFramework:
     def loss_function(self, node_attr, edge_index, edge_attr, labels, mask):
         node_attr = node_attr.to(self.device)
         edge_index = edge_index.to(self.device)
-        edge_attr = edge_attr.to(self.device)
+        edge_attr = edge_attr.to(self.device) if not(edge_attr is None) else None
 
         preds = self.predict(node_attr, edge_index, edge_attr)
 
@@ -77,29 +79,67 @@ class GNNFramework:
 
     # Train step
     def configure_optimizer(self, lr=1e-3):
-        optimizer = torch.optim.Adam(
-            self.update_node_module.parameters(), lr=lr)
+        # TODO: optimizer agnostic function, give the name of the optimizer in arg
+        # TODO: should not be here actually... This class is for learning itself. The value of this function is to set an example. 
+         
+        optimizer = torch.optim.Adam(self.update_node_module.parameters(), lr=lr) # -> loss 0.7
+        # optimizer = torch.optim.SGD(self.update_node_module.parameters(), lr=lr) # -> loss 0.7
+
         return optimizer
 
     def configure_scheduler(self, optimizer, start_factor, end_factor, total_iters):
+        # TODO: should not be here actually... This class is for learning itself. The value of this function is to set an example.
+
         # scheduler = torch.optim.lr_scheduler.ExponentialLR(
         #     optimizer, gamma)
         scheduler = torch.optim.lr_scheduler.LinearLR(
             optimizer, start_factor=start_factor, end_factor=end_factor, total_iters=total_iters)
         return scheduler
 
-    def train_step(self, node_attr, edge_index, edge_attr, labels, train_mask, optimizer):
+    def configure_weight_constrainer(self,name,min_value = -torch.inf,max_value = torch.inf):
+        # TODO: should not be here actually... This class is for learning itself. The value of this function is to set an example.
+        
+        # scheduler = torch.optim.lr_scheduler.ExponentialLR(
+        #     optimizer, gamma)
+        if name == "clipper":
+            weight_constrainer = weight_constrainers.WeightClipper(
+                min_value=min_value, 
+                max_value=max_value)
+        elif name == "sigmoid":
+            weight_constrainer = weight_constrainers.WeightSigmoid(
+                min_value=min_value, 
+                max_value=max_value)
+        else:
+            raise RuntimeError(f"Weight constrainer {name} not supported")
+
+        return weight_constrainer
+    
+
+    def train_step(self, node_attr, edge_index, edge_attr, labels, train_mask, optimizer, weight_constrainer = None, l1_reg = 0, l2_reg = 0):
         # Zero your gradients for every batch!
         optimizer.zero_grad()
 
         # Compute the loss and its gradients
         # mask applied after so that neighbors are taken into account
         loss = self.loss_function(node_attr, edge_index, edge_attr, labels, train_mask)
+        
+        if l1_reg > 0:
+            l1_norm = sum(p.abs().sum() for p in self.update_node_module.parameters())
+            loss += l1_reg * l1_norm
+        if l2_reg >0:
+            l2_norm = sum(p.pow(2).sum() for p in self.update_node_module.parameters())
+            loss += l2_reg * l2_norm
+
         loss.backward()
 
         # Adjust learning weights
         optimizer.step()
         loss = loss.detach()
+
+        # Adjust parameters if strict restriction exists
+        if not(weight_constrainer is None):
+            weight_constrainer(self.update_node_module)
+
         return loss
 
     def mae_error_function(self, node_attr, edge_index, edge_attr, labels, mask):
@@ -115,22 +155,28 @@ class GNNFramework:
               epochs, 
               report_epoch_steps, 
               optimizer, 
-              scheduler, 
+              scheduler,
+              weight_constrainer=None,
               val_dataset=None,
               early_stopping_monitor="val_mae", 
               patience=torch.inf, 
-              min_delta=1e-5, 
+              min_delta=1e-5,
+              l1_reg = 0,
+              l2_reg = 0, 
               verbose=False):
         """Training loop."""
 
         print("== start training ==")
         # Initialize the optimizer.
-        history = {"train_loss": [], 
-                   "train_mae": [],
-                   "val_loss": [], 
-                   "val_mae": []}
+        history = {
+            "epoch":[],
+            "train_loss": [], 
+            "train_mae": [],
+            #"val_loss": [], #TODO
+            #"val_mae": []   #TODO
+            }
         early_stopping_cb = callbacks.EarlyStopping(
-            early_stopping_monitor, patience, min_delta=min_delta)
+            early_stopping_monitor, patience, min_delta=min_delta, retrieve_model=False)
 
         for epoch in range(epochs):
             epoch_history = {k: [] for k in history.keys()}
@@ -141,7 +187,7 @@ class GNNFramework:
             for batch_i, batch_graph in enumerate(dataset):
                 batch_node_attr = batch_graph.x.to(self.device)
                 batch_edge_index = batch_graph.edge_index.to(self.device)
-                batch_edge_attr = batch_graph.edge_attr.to(self.device)
+                batch_edge_attr = batch_graph.edge_attr.to(self.device) if not(batch_graph.edge_attr is None) else None
                 batch_labels = batch_graph.y.to(self.device)
                 batch_train_mask = batch_graph.train_mask.to(self.device)
 
@@ -151,7 +197,10 @@ class GNNFramework:
                     batch_edge_attr, 
                     batch_labels, 
                     batch_train_mask, 
-                    optimizer)
+                    optimizer,
+                    weight_constrainer=weight_constrainer,
+                    l1_reg=l1_reg,
+                    l2_reg=l2_reg)
 
                 train_mae = self.mae_error_function(
                     batch_node_attr, 
@@ -183,7 +232,8 @@ class GNNFramework:
                               for event in epoch_history["train_loss"]])/sum([event[0] for event in epoch_history["train_loss"]])
             train_mae = sum([event[0]*event[1]
                              for event in epoch_history["train_mae"]])/sum([event[0] for event in epoch_history["train_mae"]])
-
+            
+            history["epoch"].append(epoch)
             history['train_loss'].append(train_loss.cpu())
             history["train_mae"].append(train_mae.cpu())
 
@@ -255,7 +305,7 @@ class BGNNFramework(GNNFramework):
 
         print("loss:",loss)
 
-        loss += self.update_node_module.eval_all_losses()
+        #loss += self.update_node_module.eval_all_losses()
         print("loss:",loss)
 
         return loss
@@ -363,10 +413,13 @@ class BGNN2LevelsFramework:
 
         print("== start training ==")
         # Initialize the optimizer.
-        history = {"train_loss": [], 
-                   "train_mae": [],
-                   "val_loss": [], 
-                   "val_mae": []}
+        history = {
+            "epoch":[],
+            "train_loss": [], 
+            "train_mae": [],
+            #"val_loss": [], #TODO
+            #"val_mae": []   #TODO
+            }
         early_stopping_cb = callbacks.EarlyStopping(
             early_stopping_monitor, patience, min_delta=min_delta)
 
@@ -422,6 +475,7 @@ class BGNN2LevelsFramework:
             train_mae = sum([event[0]*event[1]
                              for event in epoch_history["train_mae"]])/sum([event[0] for event in epoch_history["train_mae"]])
 
+            history["epoch"].append(epoch)
             history['train_loss'].append(train_loss.cpu())
             history["train_mae"].append(train_mae.cpu())
 

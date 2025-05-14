@@ -28,7 +28,9 @@ class VIModule(torch.nn.Module):
         t_loss = 0
 
         for l in self._internal_losses:
-            t_loss = t_loss + l()
+            new_loss = l()
+            if not(torch.any(torch.isnan(new_loss))):
+                t_loss = t_loss + new_loss
 
         return t_loss
 
@@ -38,7 +40,6 @@ class VIModule(torch.nn.Module):
         for m in self.children():
             if isinstance(m, VIModule):
                 new_term = m.eval_all_losses()*self.loss_scale_factor
-                print("new_term = ", new_term)
                 t_loss = t_loss + new_term
         return t_loss
 
@@ -65,15 +66,15 @@ class MeanFieldGaussianFeedForward(VIModule):
 
         # The parameters we adjust during training.
         self.weights_m = torch.nn.Parameter(torch.randn(
-            in_features, out_features), requires_grad=True).to(self.device)
+            in_features, out_features,device=self.device), requires_grad=True)
         self.weights_s = torch.nn.Parameter(torch.randn(
-            in_features, out_features), requires_grad=True).to(self.device)
+            in_features, out_features,device=self.device), requires_grad=True)
 
         # create holders for prior mean and std, and likelihood std.
         self.prior_weights_m = Variable(torch.randn(
-            in_features, out_features), requires_grad=False).to(self.device)
+            in_features, out_features,device=self.device), requires_grad=False)
         self.prior_weights_s = Variable(torch.randn(
-            in_features, out_features), requires_grad=False).to(self.device)
+            in_features, out_features,device=self.device), requires_grad=False)
         self.likelihood_s = Variable(torch.FloatTensor(
             (1)), requires_grad=False).to(self.device)
 
@@ -89,21 +90,29 @@ class MeanFieldGaussianFeedForward(VIModule):
 
         if has_bias:
             self.bias_m = torch.nn.Parameter(torch.randn(
-                out_features), requires_grad=True).to(self.device)
+                out_features), requires_grad=True, device=self.device)
             self.bias_s = torch.nn.Parameter(torch.randn(
-                out_features), requires_grad=True).to(self.device)
+                out_features), requires_grad=True, device=self.device)
 
             # create holders
             self.prior_bias_m = Variable(torch.randn(
-                out_features), requires_grad=False).to(self.device)
+                out_features), requires_grad=False, device=self.device)
             self.prior_bias_s = Variable(torch.randn(
-                out_features), requires_grad=False).to(self.device)
+                out_features), requires_grad=False, device=self.device)
 
             # Set the prior moments.
             self.prior_bias_m.data.fill_(prior_bias_m)
             self.prior_weights_s.data.fill_(prior_bias_s)
 
             self.add_loss(self.compute_internal_KL_div_bias)
+        
+        # Register parameters
+        parameters = [self.weights_m, self.weights_s]
+        if has_bias:
+            parameters += [self.bias_m,self.bias_s]
+
+        self.params = torch.nn.ParameterList(parameters)
+
 
     def __repr__(self):
         return "MeanFieldGaussianFeedForward(\nin_features:{},\nout_features:{},\nn_latent:{},\nsoftplus:{},\ndevice:{})".format(
@@ -131,10 +140,13 @@ class MeanFieldGaussianFeedForward(VIModule):
         if self.has_bias:
             self.sample_biases()
 
-    def forward(self, x):
+    def forward(self, x, retrieve_latent = False):
         self.sample_all_parameters()
         preds = torch.einsum("ij,kjl->kil", x, self.sampled_weights)
-        return preds
+        if retrieve_latent:
+            return preds
+        else:
+            return preds.mean(0)
 
     def compute_likelihood(self, preds, labels):
         likelihood = torch.mean(

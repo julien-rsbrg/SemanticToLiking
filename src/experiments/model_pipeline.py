@@ -1,5 +1,6 @@
 import os
 import copy
+import time
 
 import numpy as np
 import pandas as pd
@@ -21,6 +22,7 @@ from src.visualization.analyse_model import plot_errors_labels_comparison, get_p
 
 from src.pipeline import GeneralizerRun 
 import src.processing.preprocessing as preprocessing
+import src.utils
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -67,22 +69,27 @@ def prepare_graph_for_participant(data:pd.DataFrame, participant_id:any, sim_use
 
 
 
-def run(sim_used:str = "original", dst_file_path:str|None = None):
+def run(sim_used:str = "original", dst_folder_path:str|None = None):
+    dst_history_folder_path = os.path.join(dst_folder_path,"models_history")
+    src.utils.recursive_mkdirs(dst_history_folder_path)
+
     ## Data
     data = loading.load_data()
 
     def nor_function(a,b):
         return (a or b) and not(a and b)
 
-    data["NoExp_Exp"] = data.apply(lambda row: nor_function(row["word1_experience"]>50,row["word2_experience"]>50),axis=1)
-
 
     results = {"participant":[],
                "min_train_loss":[],
-               "min_train_mae":[]}
+               "min_train_mae":[],
+               "min_train_loss_epoch":[],
+               "min_train_mae_epoch":[],
+               "end_epoch":[]}
 
     participant_indices = data["participant"].unique()
     for participant_id in participant_indices:
+        time_start_participant = time.time()
         print(f"start participant_id/n_participants-1:{participant_id:d}/{len(participant_indices-1):d}")
         
         ## PREPROCESSING ##
@@ -93,8 +100,8 @@ def run(sim_used:str = "original", dst_file_path:str|None = None):
         # preprocessing 1 - experienced to not experienced
         print("Preprocessing 1")
         preprocessing_cut = preprocessing.CutGroupSendersToGroupReceivers(
-            group_senders_mask_fn= lambda x: x["experience"] > 50,
-            group_receivers_mask_fn= lambda x: x["experience"] <= 50,
+            group_senders_mask_fn= lambda x: x["experience"] > 0,
+            group_receivers_mask_fn= lambda x: x["experience"] <= 0,
         )
 
         new_edge_index, new_edge_attr, new_x, new_y = preprocessing_cut.fit_transform(
@@ -106,32 +113,35 @@ def run(sim_used:str = "original", dst_file_path:str|None = None):
 
         participant_graph.edge_index = torch.Tensor(new_edge_index).to(dtype=torch.int64)
         participant_graph.edge_attr = torch.Tensor(new_edge_attr.values) 
+        # participant_graph.edge_attr = None
         participant_graph.x = torch.Tensor(new_x.values) 
         participant_graph.y = torch.Tensor(new_y.values) 
 
         # preprocessing 2 - only not experienced predictions in training
         print("Preprocessing 2")
         node_train_mask = torch.ones(len(participant_graph.x),dtype=torch.bool)
-        node_train_mask[participant_graph.x[:,1]>50] = False
+        node_train_mask[participant_graph.x[:,1]>0] = False
         participant_graph.train_mask = node_train_mask
         participant_graph.val_mask = torch.zeros(len(participant_graph.x),dtype=torch.bool)
         
         # preprocessing 3 - two distinct parameters for liking positive and liking negative
-        print("Preprocessing 3")
-        preprocessing_separate_features = preprocessing.SeparatePositiveNegative(verbose=True, feature_separated="liking")
-        x, _ = preprocessing_separate_features.fit_transform(
-            x = pd.DataFrame(participant_graph.x.data.numpy(),columns=["liking","experience"])
-        )
-        participant_graph.x = torch.Tensor(x[["liking_pos","liking_neg"]].values)
-        
+        #print("Preprocessing 3")
+        #preprocessing_separate_features = preprocessing.SeparatePositiveNegative(verbose=True, feature_separated="liking")
+        #x, _ = preprocessing_separate_features.fit_transform(
+        #    x = pd.DataFrame(participant_graph.x.data.numpy(),columns=["liking","experience"])
+        #)
 
+        # preprocessing 3' - remove experience from liking 
+        participant_graph.x = participant_graph.x[:,:1]
+               
         ## MODEL ##
         print("Model")
-        src_content_mask = torch.Tensor([True,True]).to(torch.bool)
-        src_edge_mask = torch.Tensor([False,False]).to(torch.bool)
-        dst_mask = torch.Tensor([False,False]).to(torch.bool)
+        src_content_mask = torch.Tensor([True]).to(torch.bool)
+        src_edge_mask = torch.Tensor([False]).to(torch.bool)
+        dst_content_mask = torch.Tensor([False]).to(torch.bool)
+        dst_edge_mask = torch.Tensor([False]).to(torch.bool)
         my_module = MyGATConv(
-            in_channels=(2,2),
+            in_channels=(1,1),
             out_channels=1,
             heads=1,
             negative_slope=0.0,
@@ -141,8 +151,11 @@ def run(sim_used:str = "original", dst_file_path:str|None = None):
             bias=False,
             src_content_mask=src_content_mask,
             src_edge_mask=src_edge_mask,
-            dst_content_mask=dst_mask,
-            dst_edge_mask=dst_mask)
+            dst_content_mask=dst_content_mask,
+            dst_edge_mask=dst_edge_mask,
+            src_content_require_grad=False,
+            src_content_weight_initializer="ones",
+            edge_weight_initializer="ones")
 
         
         
@@ -152,28 +165,39 @@ def run(sim_used:str = "original", dst_file_path:str|None = None):
                                participant_graph.edge_index,
                                participant_graph.edge_attr)
 
-        opt = complete_model.configure_optimizer(lr=0.1)
+        opt = complete_model.configure_optimizer(lr=10)
         scheduler = complete_model.configure_scheduler(opt,0.1,0.1,10)
-
-        complete_model.predict(participant_graph.x,participant_graph.edge_index,participant_graph.edge_attr)
-        description_parameters_init = complete_model.update_node_module.get_description_parameters().copy()
+        weight_constrainer = complete_model.configure_weight_constrainer("clipper",0,100)
         
-        history = complete_model.train([participant_graph],
-                                       10000,
-                                       1,
-                                       opt,
-                                       scheduler,
-                                       val_dataset=None,
-                                       early_stopping_monitor="train_loss",
-                                       patience=200)
+        description_parameters_init = complete_model.update_node_module.get_description_parameters().copy()
+
+        if participant_graph.train_mask.sum()>0:
+            history = complete_model.train([participant_graph],
+                                        10000,
+                                        1,
+                                        opt,
+                                        scheduler,
+                                        weight_constrainer=weight_constrainer,
+                                        val_dataset=None,
+                                        early_stopping_monitor="train_loss",
+                                        patience=200,
+                                        l2_reg=1e-2)
+        else:
+            history = {"epoch":[],"train_loss":[],"train_mae":[]}
+
+        dst_history_path = os.path.join(dst_history_folder_path, f"model_history_participant_{participant_id}.csv")
+        pd.DataFrame(history).to_csv(dst_history_path,index=False)
 
         complete_model.predict(participant_graph.x,participant_graph.edge_index,participant_graph.edge_attr)
         description_parameters_trained = complete_model.update_node_module.get_description_parameters().copy()
-        
+
         ## Save
         results["participant"].append(participant_id)
-        results["min_train_loss"].append(np.min(history["train_loss"]))
-        results["min_train_mae"].append(np.min(history["train_mae"]))
+        results["min_train_loss"].append(np.min(history["train_loss"]) if len(history["train_loss"]) else None)
+        results["min_train_mae"].append(np.min(history["train_mae"]) if len(history["train_mae"]) else None)
+        results["min_train_loss_epoch"].append(np.argmin(history["train_loss"]) if len(history["train_loss"]) else None)
+        results["min_train_mae_epoch"].append(np.argmin(history["train_mae"]) if len(history["train_mae"]) else None)
+        results["end_epoch"].append(history["epoch"][-1] if len(history["epoch"]) else None)
 
         for param_name in description_parameters_init.columns:
             if "init_"+param_name in results:
@@ -183,10 +207,13 @@ def run(sim_used:str = "original", dst_file_path:str|None = None):
                 results["init_"+param_name] = [description_parameters_init[param_name][0]]
                 results["trained_"+param_name] = [description_parameters_trained[param_name][0]]
 
-        pd.DataFrame(results).to_csv(dst_file_path,index=False)
-        return
+
+        dst_results_path = os.path.join(dst_folder_path, "results_model_pipeline_content-identity_edge-sim_epochs-10000.csv")
+        pd.DataFrame(results).to_csv(dst_results_path,index=False)
             
         print(f"end participant_id/n_participants-1:{participant_id:d}/{len(participant_indices-1):d}")
+        time_take_participant = (time.time()-time_start_participant)
+        print("time taken: {}h - {}m - {}s".format(time_take_participant//(3600),((time_take_participant%3600)//60),((time_take_participant%3600)%60)))
 
     return results
 
@@ -195,4 +222,4 @@ def run(sim_used:str = "original", dst_file_path:str|None = None):
 
 
 if __name__ == "__main__":
-    run(sim_used="original",dst_file_path="src/experiments/results/model_pipeline_content-liking_edge-sim_epochs-10000.csv")
+    run(sim_used="original",dst_folder_path="src/experiments/results/2025-05-13_19-38_results")

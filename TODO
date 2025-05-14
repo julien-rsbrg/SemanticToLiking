@@ -1,4 +1,4 @@
-install torch-sparse
+install torch-sparse [OK]
 
 
 TODO
@@ -21,3 +21,40 @@ Different clustering
 
 Model comparison:
 - K-means 
+
+
+
+[OK][OK][OK]
+Issue of convergence myGAT [OK]
+Options:
+- create new optimizer
+if isinstance(lr, torch.Tensor) and torch.compiler.is_compiling():
+                grads_x_lr = torch._foreach_mul(device_grads, -lr)
+                torch._foreach_add_(device_params, grads_x_lr)
+            else:
+                torch._foreach_add_(device_params, device_grads, alpha=-lr)
+                
+                
+could do a _foreach_mul 0 followed by _foreach_add_(old, new)
+
+
+- create hyperopt for params
+https://medium.com/biased-algorithms/hyperparameter-tuning-with-ray-tune-pytorch-d5749acb314b
+
+the params need to be passed down a config dictionary... give iterative based (01,02,10,...) ids to params and change them in the model. Need to check how to change the params directly and will be useful for the previous option (optimizer) too anyway
+
+- add perturbations to the learning: not the same batch each time => OK done obtained poor result even with 1 node to predict kept... The option 1 is that the algorithm is widely different. I don't think the optimization algo is wrong because otherwise, using another optimization algo would be like reinventing the wheel.
+ -> try other models (more complex and easier ones) (pipeline would be good)
+ -> check that all the parameters are changing (go back to test_benchmark_dataset.ipynb, normally it's ok)
+
+[OK][OK][OK]
+
+Next steps:
+- data visualization
+- results visualization + statistical test on params [urgent: Model level] 
+Cool to keep prediction table vs actual liking for error label comparison (participant wise or in general)
+Cool to keep stats on the graph of every participant (maybe elsewhere though)
+
+ 
+ 
+ 

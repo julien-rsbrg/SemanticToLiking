@@ -27,6 +27,7 @@ from torch_geometric.nn.dense.linear import Linear
 from torch.autograd import Variable
 
 from src.models.bnn_layers import MeanFieldGaussianFeedForward, VIModule
+from src.models.nn_layers import myLinear
 
 class MyGATConv(torch_geometric.nn.GATConv):
     def __init__(
@@ -45,12 +46,21 @@ class MyGATConv(torch_geometric.nn.GATConv):
         src_edge_mask: Optional[torch.Tensor] = None,
         dst_content_mask: Optional[torch.Tensor] = None,
         dst_edge_mask: Optional[torch.Tensor] = None,
+        src_content_require_grad: bool = True,
+        src_edge_require_grad: bool = True,
+        dst_content_require_grad: bool = True,
+        dst_edge_require_grad: bool = True,
+        src_content_weight_initializer: str = "glorot",
+        src_edge_weight_initializer: str = "glorot",
+        dst_content_weight_initializer: str = "glorot",
+        dst_edge_weight_initializer: str = "glorot",
+        edge_weight_initializer: str = "glorot",
         **kwargs,
     ):
         kwargs.setdefault('aggr', 'add')
-        
-        self.lin = self.lin_src = self.lin_dst = None
-        self.lin_src_content = self.lin_src_edge = self.lin_dst_content = self.lin_dst_edge = None
+
+        # need before the reset
+        self.lin = self.lin_src_content = self.lin_src_edge = self.lin_dst_content = self.lin_dst_edge = None
 
         super().__init__(
             in_channels=in_channels,
@@ -65,20 +75,29 @@ class MyGATConv(torch_geometric.nn.GATConv):
             bias=bias,
             **kwargs
         )
+
+
+        self.lin_src = self.lin_dst = None
+        if edge_dim is not None:
+            self.lin_edge = myLinear(edge_dim, 
+                                     heads * out_channels, 
+                                     bias=False,
+                                     weight_initializer=edge_weight_initializer) # for uniformity
+
+
         # In case we are operating in bipartite graphs, we apply separate
         # transformations 'lin_src' and 'lin_dst' to source and target nodes:
         if isinstance(in_channels, int) and (src_content_mask is None) and (src_edge_mask is None) and (dst_content_mask is None) and (dst_edge_mask is None):
             raise NotImplementedError() # should check forward() in that case
             #self.lin = Linear(in_channels, heads * out_channels, bias=False,weight_initializer='glorot')
         else:
-            assert not(isinstance(in_channels,int)), "in_channels Iterable if any src mask or dst mask not None"
-
             # TODO: create function for this setup repeated 4 times
             if src_content_mask is None:
                 src_content_in_channels = in_channels[0]
                 self.src_content_mask = torch.ones(src_content_in_channels,dtype=torch.bool)
             else:
                 assert isinstance(src_content_mask,torch.Tensor) and src_content_mask.dtype == torch.bool
+
                 src_content_in_channels = int(torch.sum(src_content_mask))
                 self.src_content_mask = src_content_mask
             
@@ -106,30 +125,33 @@ class MyGATConv(torch_geometric.nn.GATConv):
                 dst_edge_in_channels = int(torch.sum(dst_edge_mask))
                 self.dst_edge_mask = dst_edge_mask
                         
-            self.lin_src_edge = Linear(src_edge_in_channels, 
+            self.lin_src_edge = myLinear(src_edge_in_channels, 
                                        heads * out_channels, 
                                        bias=False,
-                                       weight_initializer='glorot')            
-            self.lin_dst_edge = Linear(dst_edge_in_channels, 
+                                       weight_initializer=src_edge_weight_initializer)            
+            self.lin_dst_edge = myLinear(dst_edge_in_channels, 
                                        heads * out_channels, 
                                        bias=False,
-                                       weight_initializer='glorot')
+                                       weight_initializer=dst_edge_weight_initializer)
 
         # In case we are operating in bipartite graphs, we apply separate
         # transformations 'lin_src' and 'lin_dst' to source and target nodes:
         if isinstance(in_channels, int):
-            self.lin_src_content = Linear(in_channels, heads * out_channels,
-                                          bias=False, weight_initializer='glorot')
+            assert torch.all(src_content_mask == dst_content_mask) and src_content_require_grad == dst_content_require_grad and src_content_weight_initializer == dst_content_weight_initializer, "It is useless to distinguish the two if there will have the same model behind." 
+            self.lin_src_content = myLinear(in_channels, heads * out_channels,
+                                          bias=False, weight_initializer=src_content_weight_initializer)
             self.lin_dst_content = self.lin_src_content
         else:
-            print("src_content_in_channels",src_content_in_channels)
-            print("dst_content_in_channels",dst_content_in_channels)
-            self.lin_src_content = Linear(src_content_in_channels, heads * out_channels, bias=False,
-                                          weight_initializer='glorot')
-            self.lin_dst_content = Linear(dst_content_in_channels, heads * out_channels, bias=False,
-                                          weight_initializer='glorot')
-            
+            self.lin_src_content = myLinear(src_content_in_channels, heads * out_channels, bias=False,
+                                          weight_initializer=src_content_weight_initializer)
+            self.lin_dst_content = myLinear(dst_content_in_channels, heads * out_channels, bias=False,
+                                          weight_initializer=dst_content_weight_initializer)
         
+        self.lin_src_content.set_requires_grad(src_content_require_grad)
+        self.lin_dst_content.set_requires_grad(dst_content_require_grad) 
+        self.lin_src_edge.set_requires_grad(src_edge_require_grad) 
+        self.lin_dst_edge.set_requires_grad(dst_edge_require_grad) 
+
         self.att_src.requires_grad = False
         self.att_dst.requires_grad = False
 
@@ -384,6 +406,7 @@ class MyBGATConv(MyGATConv,VIModule):
         out_channels: int,
         heads: int = 1,
         concat: bool = True,
+        n_latent: int = 1,
         negative_slope: float = 0.2,
         dropout: float = 0.0,
         add_self_loops: bool = True,
@@ -421,8 +444,6 @@ class MyBGATConv(MyGATConv,VIModule):
             raise NotImplementedError() # should check forward() in that case
             #self.lin = Linear(in_channels, heads * out_channels, bias=False,weight_initializer='glorot')
         else:
-            assert not(isinstance(in_channels,int)), "in_channels Iterable if any src mask or dst mask not None"
-
             # TODO: create function for this setup repeated 4 times
             if src_content_mask is None:
                 src_content_in_channels = in_channels[0]
@@ -459,9 +480,9 @@ class MyBGATConv(MyGATConv,VIModule):
             self.lin_src_edge = MeanFieldGaussianFeedForward(
                 in_features=src_edge_in_channels, 
                 out_features=heads * out_channels, 
-                prior_weights_m=1.0,
-                prior_weights_s=1.0,
-                n_latent=1,
+                prior_weights_m = 1.0,
+                prior_weights_s = 1.0,
+                n_latent=n_latent,
                 has_bias=False,
                 device = self.device)            
             self.lin_dst_edge = MeanFieldGaussianFeedForward(
@@ -469,7 +490,7 @@ class MyBGATConv(MyGATConv,VIModule):
                 out_features = heads * out_channels, 
                 prior_weights_m = 1.0,
                 prior_weights_s = 1.0,
-                n_latent=1,
+                n_latent=n_latent,
                 has_bias = False,
                 device = self.device)   
 
@@ -481,29 +502,25 @@ class MyBGATConv(MyGATConv,VIModule):
                 out_features = heads * out_channels, 
                 prior_weights_m = 1.0,
                 prior_weights_s = 1.0,
-                n_latent=1,
+                n_latent=n_latent,
                 has_bias = False,
                 device = self.device)
             self.lin_dst_content = self.lin_src_content
         else:
-            print("src_content_in_channels",src_content_in_channels)
-            print("dst_content_in_channels",dst_content_in_channels)
-
             self.lin_src_content = MeanFieldGaussianFeedForward(
                 in_features = src_content_in_channels, 
                 out_features = heads * out_channels, 
                 prior_weights_m = 1.0,
                 prior_weights_s = 1.0,
-                n_latent=1,
+                n_latent=n_latent,
                 has_bias = False,
                 device = self.device)
-            print(self.lin_src_content,self.lin_src_content.weights_m,self.lin_src_content.weights_s)
             self.lin_dst_content = MeanFieldGaussianFeedForward(
                 in_features = dst_content_in_channels, 
                 out_features = heads * out_channels, 
                 prior_weights_m = 1.0,
                 prior_weights_s = 1.0,
-                n_latent=1,
+                n_latent=n_latent,
                 has_bias = False,
                 device = self.device)
             
@@ -513,7 +530,7 @@ class MyBGATConv(MyGATConv,VIModule):
                 out_features = heads * out_channels, 
                 prior_weights_m = 1.0,
                 prior_weights_s = 1.0,
-                n_latent=1,
+                n_latent=n_latent,
                 has_bias = False,
                 device = self.device)
             
@@ -572,13 +589,14 @@ class MyBGATConv(MyGATConv,VIModule):
 
         if not(self.lin_src_edge is None):
             new_parameters_spec = get_description_bayesian_linear(self.lin_src_edge,"src_edge")
+            full_parameters_spec = {}
             if self.att_src.numel() == 1:
-                full_parameters_spec = {}
                 for k,v in new_parameters_spec.items():
                     if v[0] is not None:
                         full_parameters_spec["full_"+k] = float(self.att_src.squeeze())*v[0]
                     else:
                         full_parameters_spec["full_"+k] = None
+
             parameters_spec.update(new_parameters_spec)
             parameters_spec.update(full_parameters_spec)
         
@@ -591,6 +609,7 @@ class MyBGATConv(MyGATConv,VIModule):
 
         if not(self.lin_dst_edge is None):
             new_parameters_spec = get_description_bayesian_linear(self.lin_dst_edge,"dst_edge")
+            full_parameters_spec = {}
             if self.att_dst.numel() == 1:
                 full_parameters_spec = {}
                 for k,v in new_parameters_spec.items():
@@ -606,6 +625,7 @@ class MyBGATConv(MyGATConv,VIModule):
 
         if not(self.lin_edge is None):
             new_parameters_spec = get_description_bayesian_linear(self.lin_edge,"edge")
+            full_parameters_spec = {}
             if self.att_edge.numel() == 1:
                 full_parameters_spec = {}
                 for k,v in new_parameters_spec.items():

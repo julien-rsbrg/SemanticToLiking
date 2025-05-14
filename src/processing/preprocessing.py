@@ -330,7 +330,11 @@ class CutGroupSendersToGroupReceivers(EdgeSelector):
         is_edge_selected = is_edge_selected[0,:] * is_edge_selected[1,:]
 
         new_edge_index = copy.deepcopy(edge_index)[:,~is_edge_selected]
-        new_edge_attr = copy.deepcopy(edge_attr).iloc[~is_edge_selected]
+        if not(edge_attr is None):
+            new_edge_attr = copy.deepcopy(edge_attr).iloc[~is_edge_selected]
+        else:
+            new_edge_attr = None
+        
         new_x = copy.deepcopy(x)
         new_y = copy.deepcopy(y)
 

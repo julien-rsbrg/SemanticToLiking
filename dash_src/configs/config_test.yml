@@ -1,0 +1,30 @@
+#### Data information ####
+
+# where the result folder is located
+result_folder_path: "results/randomly_generated_results"
+sim_analysis_evolution_data_name: "evolution_data.csv"
+
+time_column_name: "time"
+
+main_config_params:
+- "param0"
+- "param1"
+- "param2"
+
+# should be common to all species
+xloc_var_name: "y0"
+yloc_var_name: "y1"
+
+#### App information ####
+
+ticks_per_range: 10
+n_potential_values_continuous_slider: 20
+
+# information here: https://plotly.com/python/marker-style/
+species_to_symbol:
+  a: "triangle-down"
+  b: "star"
+
+
+
+
