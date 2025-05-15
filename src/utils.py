@@ -17,3 +17,10 @@ def recursive_mkdirs(folder_path:str)->None:
     else:
         if not(os.path.exists(folder_path)):
             os.makedirs(folder_path)
+
+
+def locate_in_list(var,list):
+    for i in range(len(list)):
+        if var == list[i]:
+            return i
+    return None

@@ -103,6 +103,7 @@ def run(sim_used:str = "original", dst_folder_path:str|None = None):
             group_senders_mask_fn= lambda x: x["experience"] > 0,
             group_receivers_mask_fn= lambda x: x["experience"] <= 0,
         )
+        # TODO: use data conversion tools/fns instead
 
         new_edge_index, new_edge_attr, new_x, new_y = preprocessing_cut.fit_transform(
             edge_index=participant_graph.edge_index.data.numpy(),
@@ -126,7 +127,7 @@ def run(sim_used:str = "original", dst_folder_path:str|None = None):
         
         # preprocessing 3 - two distinct parameters for liking positive and liking negative
         #print("Preprocessing 3")
-        #preprocessing_separate_features = preprocessing.SeparatePositiveNegative(verbose=True, feature_separated="liking")
+        # preprocessing_separate_features = preprocessing.SeparatePositiveNegative(verbose=True, feature_separated="liking")
         #x, _ = preprocessing_separate_features.fit_transform(
         #    x = pd.DataFrame(participant_graph.x.data.numpy(),columns=["liking","experience"])
         #)

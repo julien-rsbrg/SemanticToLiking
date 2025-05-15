@@ -1,6 +1,8 @@
 from typing import Tuple
 
+import numpy as np
 import pandas as pd
+from sklearn.preprocessing import StandardScaler
 import torch
 from torch_geometric.data import Data
 
@@ -120,3 +122,43 @@ def convert_table_to_graph(
         return data_graph, translater_word_to_index
     else:
         return data_graph
+
+
+
+def prepare_graph_for_participant(data:pd.DataFrame, participant_id:any, sim_used:str) -> Data:
+    # extraction
+    subdata = data[data["participant"] == participant_id]
+
+    # similarity
+    if sim_used == "ones":
+        subdata["test_sim"] = np.ones(len(subdata))
+    elif sim_used == "random":
+        subdata["test_sim"] = np.random.rand(len(subdata))
+    elif sim_used == "original":
+        subdata["test_sim"] = subdata["senenceBERT_mpnet_similarity"]
+    else:
+        raise NotImplementedError("Don't know sim_used =", sim_used)
+
+    participant_graph,translator_word_to_index = convert_table_to_graph(
+        complete_data_table=subdata,
+        node_attr_names=["liking","experience"],
+        node_label_names=["liking"],
+        edge_attr_names=["test_sim"],
+        return_word_to_index=True)
+
+    # scaling only the liking
+    node_table = build_node_table(data,["liking"],distinct_id=["participant"])
+    scaler_liking = StandardScaler()
+    scaler_liking.fit(node_table.liking.to_numpy()[...,np.newaxis])
+    transformed_50 = scaler_liking.transform(np.array([[50]]))
+
+    # todo create specific scaler function
+    new_x_liking = scaler_liking.transform(participant_graph.x[:,:1])
+    new_x_liking -= np.repeat(transformed_50,repeats=participant_graph.num_nodes,axis=0)
+    participant_graph.x[:,:1] = torch.Tensor(new_x_liking)
+
+    participant_graph.y = scaler_liking.transform(participant_graph.y)
+    participant_graph.y -= np.repeat(transformed_50,repeats=participant_graph.num_nodes,axis=0)
+    participant_graph.y = torch.Tensor(participant_graph.y)
+
+    return participant_graph, translator_word_to_index

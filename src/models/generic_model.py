@@ -45,12 +45,23 @@ class ForceFitOutputs():
 class GenericModel(ABC):
     @abstractmethod
     def fit(self,dataset,val_dataset = None, **kwargs) -> tuple[any,dict]:
+        """fit model to the dataset"""
         pass
     
     @abstractmethod
     def predict(self,data,**kwargs):
+        """use model to predict"""
+        pass
+    
+    @abstractmethod
+    def save(self):
+        """save model"""
         pass
 
+    @abstractmethod
+    def reset(self):
+        """reset model from scratch"""
+        pass
 
 ################
 class GNNFrameworkWrapper(GenericModel):

@@ -150,20 +150,19 @@ class GNNFramework:
         mae_error = mae_error.detach()
         return mae_error
 
-    def train(self, 
-              dataset, 
-              epochs, 
-              report_epoch_steps, 
-              optimizer, 
-              scheduler,
-              weight_constrainer=None,
-              val_dataset=None,
-              early_stopping_monitor="val_mae", 
-              patience=torch.inf, 
-              min_delta=1e-5,
-              l1_reg = 0,
-              l2_reg = 0, 
-              verbose=False):
+    def fit(self, 
+            dataset, 
+            epochs, 
+            report_epoch_steps, 
+            optimizer, 
+            scheduler,
+            weight_constrainer=None,
+            early_stopping_monitor="val_mae", 
+            patience=torch.inf, 
+            min_delta=1e-5,
+            l1_reg = 0,
+            l2_reg = 0, 
+            verbose=False):
         """Training loop."""
 
         print("== start training ==")
@@ -172,8 +171,7 @@ class GNNFramework:
             "epoch":[],
             "train_loss": [], 
             "train_mae": [],
-            #"val_loss": [], #TODO
-            #"val_mae": []   #TODO
+            "val_mae": [] 
             }
         early_stopping_cb = callbacks.EarlyStopping(
             early_stopping_monitor, patience, min_delta=min_delta, retrieve_model=False)
@@ -190,6 +188,7 @@ class GNNFramework:
                 batch_edge_attr = batch_graph.edge_attr.to(self.device) if not(batch_graph.edge_attr is None) else None
                 batch_labels = batch_graph.y.to(self.device)
                 batch_train_mask = batch_graph.train_mask.to(self.device)
+                batch_val_mask = batch_graph.val_mask.to(self.device)
 
                 train_loss = self.train_step(
                     batch_node_attr, 
@@ -208,22 +207,33 @@ class GNNFramework:
                     batch_edge_attr, 
                     batch_labels, 
                     batch_train_mask)
+                
+                val_mae = self.mae_error_function(
+                    batch_node_attr, 
+                    batch_edge_index, 
+                    batch_edge_attr, 
+                    batch_labels, 
+                    batch_val_mask)
 
                 if verbose:
-                    txt = "epoch: {epoch:.0f}/{epochs:.0f},\n batch_i: {batch_i:.0f}/{n_batch:.0f},\n batch_size: {batch_size:.0f},\n train_loss: {train_loss:.4f},\n train_mae: {train_mae:.4f}\n"
+                    txt = "epoch: {epoch:.0f}/{epochs:.0f},\n batch_i: {batch_i:.0f}/{n_batch:.0f},\n batch_size: {batch_size:.0f},\n train_loss: {train_loss:.4f},\n train_mae: {train_mae:.4f},\n val_mae: {val_mae:.4f}\n"
                     print(txt.format(epoch=epoch+1,
                                      epochs=epochs,
                                      batch_i=batch_i+1,
                                      n_batch=len(dataset),
                                      batch_size=batch_train_mask.sum(),
                                      train_loss=train_loss.cpu().numpy(),
-                                     train_mae=train_mae.cpu().numpy()), flush=True)
+                                     train_mae=train_mae.cpu().numpy(),
+                                     val_mae=val_mae.cpu().numpy()), flush=True)
+                
                 epoch_history["train_loss"].append(
                     (batch_train_mask.sum(), train_loss))
                 epoch_history["train_mae"].append(
                     (batch_train_mask.sum(), train_mae))
+                epoch_history["val_mae"].append(
+                    (batch_val_mask.sum(), val_mae))
+            
             self.update_node_module.train(False)
-
 
             epoch_end_time = time.time()
             epoch_time_duration = epoch_end_time - epoch_start_time
@@ -232,19 +242,23 @@ class GNNFramework:
                               for event in epoch_history["train_loss"]])/sum([event[0] for event in epoch_history["train_loss"]])
             train_mae = sum([event[0]*event[1]
                              for event in epoch_history["train_mae"]])/sum([event[0] for event in epoch_history["train_mae"]])
+            train_mae = sum([event[0]*event[1]
+                             for event in epoch_history["val_mae"]])/sum([event[0] for event in epoch_history["val_mae"]])
             
             history["epoch"].append(epoch)
             history['train_loss'].append(train_loss.cpu())
             history["train_mae"].append(train_mae.cpu())
+            history["val_mae"].append(val_mae.cpu())
 
             if (epoch+1) % report_epoch_steps == 0:
-                txt = "epoch: {epoch:.0f}/{epochs:.0f},\n train_loss: {train_loss:.4f},\n train_mae: {train_mae:.4f},\n epoch_time_duration: {epoch_time_duration:.4f}\n"
+                txt = "epoch: {epoch:.0f}/{epochs:.0f},\n train_loss: {train_loss:.4f},\n train_mae: {train_mae:.4f},\n val_mae: {val_mae:.4f},\n epoch_time_duration: {epoch_time_duration:.4f}\n"
                 print(txt.format(epoch=epoch+1,
                                  epochs=epochs,
                                  train_loss=history['train_loss'][-1],
                                  train_mae=history['train_mae'][-1],
+                                 val_mae=history['val_mae'][-1],
                                  epoch_time_duration=epoch_time_duration),
-                      flush=True)
+                                 flush=True)
 
             # change learning rate
             scheduler.step()
@@ -269,6 +283,9 @@ class GNNFramework:
 
 
 class BGNNFramework(GNNFramework):
+    """
+    TO UPDATE 15-05
+    """
     def __init__(self, 
                  update_node_module, 
                  device, 
@@ -321,6 +338,10 @@ class BGNNFramework(GNNFramework):
 
 
 class BGNN2LevelsFramework:
+    """
+    TO UPDATE 15-05
+    """
+
     # Class initialization params
     def __init__(self, 
                  update_node_module, 
@@ -398,17 +419,17 @@ class BGNN2LevelsFramework:
         mae_error = mae_error.detach()
         return mae_error
 
-    def train(self, 
-              dataset, 
-              epochs, 
-              report_epoch_steps, 
-              optimizer, 
-              scheduler, 
-              val_dataset=None,
-              early_stopping_monitor="val_mae", 
-              patience=torch.inf, 
-              min_delta=1e-5, 
-              verbose=False):
+    def fit(self, 
+            dataset, 
+            epochs, 
+            report_epoch_steps, 
+            optimizer, 
+            scheduler, 
+            val_dataset=None,
+            early_stopping_monitor="val_mae", 
+            patience=torch.inf, 
+            min_delta=1e-5, 
+            verbose=False):
         """Training loop."""
 
         print("== start training ==")
