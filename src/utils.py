@@ -1,4 +1,5 @@
 import os
+import yaml
 
 def recursive_mkdirs(folder_path:str)->None:
     """
@@ -24,3 +25,20 @@ def locate_in_list(var,list):
         if var == list[i]:
             return i
     return None
+
+
+def read_yaml(src_path:str) -> dict:
+    assert os.path.splitext(src_path)[1] in [".yml",".yaml"], f"Wrong extension for the file {src_path}: should be .yml or .yaml"
+
+    with open(src_path, 'r') as file:
+        data = yaml.safe_load(file)
+    return data
+
+def save_yaml(data:dict,dst_path:str):
+    assert os.path.splitext(dst_path)[1] in [".yml",".yaml"], f"Wrong extension for the file {dst_path}: should be .yml or .yaml"
+    assert os.path.dirname(dst_path) == "" or os.path.exists(os.path.dirname(dst_path)), f"Directory {os.path.dirname(dst_path)} does not exist"
+
+    with open(dst_path, 'w') as file:
+        yaml.dump(data, file)
+
+

@@ -1,8 +1,6 @@
 import collections.abc
 from abc import ABC, abstractmethod
 
-from src.models.ML_frameworks import GNNFramework
-
 class FilterKwargs():
     def __init__(self,kept_keywords):
         self.kept_keywords = kept_keywords
@@ -45,25 +43,60 @@ class ForceFitOutputs():
 class GenericModel(ABC):
     @abstractmethod
     def fit(self,dataset,val_dataset = None, **kwargs) -> tuple[any,dict]:
-        """fit model to the dataset"""
+        """fit the model to the dataset"""
         pass
     
-    @abstractmethod
-    def predict(self,data,**kwargs):
-        """use model to predict"""
-        pass
     
     @abstractmethod
-    def save(self):
-        """save model"""
+    def predict(self,node_attr, edge_index, edge_attr = None, **kwargs):
+        """use the model to predict"""
+        pass
+    
+    
+    @abstractmethod
+    def save(self,dst_path:str):
+        """save the model
+        
+        Parameters
+        ----------
+        dst_path : str
+            Path to save the model. No extension.
+        """
         pass
 
+    
     @abstractmethod
-    def reset(self):
-        """reset model from scratch"""
+    def load(self,src_path:str):
+        """load the model
+        
+        Parameters
+        ----------
+        src_path : str
+            source path to the configuration / save of the model
+
+        Returns
+        -------
+        self : GenericModel
+            a new version of the model
+        """
         pass
+    
+    
+    @abstractmethod
+    def reset_parameters(self):
+        """reset parameters of the model"""
+        pass
+
+    
+    @abstractmethod
+    def get_config(self):
+        """get configuration for the model"""
+        pass
+
+
 
 ################
+"""
 class GNNFrameworkWrapper(GenericModel):
     def __init__(self,
                  model:GNNFramework,
@@ -80,6 +113,7 @@ class GNNFrameworkWrapper(GenericModel):
         self.fit = ForceFitOutputs()(self.fit)
         self.predict = FilterKwargs(kept_keywords=self.predict_param_names)(self.model.predict)
 
+
     def fit(self,dataset,val_dataset,**kwargs):
         self.model.train(
             dataset=dataset,
@@ -87,5 +121,7 @@ class GNNFrameworkWrapper(GenericModel):
             epochs=kwargs["epochs"] 
         )
 
+
     def predict(self,data):
         pass
+"""

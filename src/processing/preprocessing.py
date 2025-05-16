@@ -65,9 +65,13 @@ class NodeTransformator(ABC):
         """Name of the transform function used for authentificate"""
         return self.main_name + self.params_repr
 
-
     def __repr__(self):
         return self.name() 
+
+    @abstractmethod
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        pass
 
 
     def _check_types(self, x: pd.DataFrame,  y: pd.DataFrame | None = None):
@@ -160,6 +164,12 @@ class SeparatePositiveNegative(NodeTransformator):
         """Representation of the parameters of the transform function"""
         return self.feature_separated
     
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        return {"name":"SeparatePositiveNegative", 
+                "parameters":{"verbose":self.verbose,
+                              "feature_separated":self.feature_separated}}
+
     def fit(self, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
         super().fit(x,y)
         self._feature_names_out = self._feature_names_in + [self.feature_separated+"_pos", self.feature_separated+"_neg"]
@@ -212,6 +222,12 @@ class KeepFeatureNamedSelector(NodeTransformator):
         """Representation of the parameters of the transform function"""
         return ""
     
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        return {"name":"KeepFeatureNamedSelector", 
+                "parameters":{"verbose":self.verbose,
+                              "feature_names_kept":self.feature_names_kept}}
+    
     def fit(self, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
         super().fit(x,y)
         self._feature_names_out = self.feature_names_kept
@@ -263,6 +279,19 @@ class PolynomialFeatureGenerator(NodeTransformator):
     def params_repr(self) -> str:
         """Representation of the parameters of the transform function"""
         return f"-Deg{self.degree}-InterOnly{self.interaction_only}-Bias{self.include_bias}"
+    
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        config = {"name":"PolynomialFeatureGenerator", 
+                  "parameters":{"verbose":self.verbose,
+                                "feature_names_involved":self.feature_names_involved,
+                                "degree":self.degree,
+                                "interaction_only":self.interaction_only,
+                                "include_bias":self.include_bias
+                                }
+        }
+        return config
+    
 
     def fit(self, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs) -> Tuple[pd.DataFrame,pd.DataFrame]:
         x,y = super().fit(x, y)
@@ -341,6 +370,14 @@ class EdgeTransformator(ABC):
         """Name of the transform function used for authentificate"""
         return self.main_name + self.params_repr
 
+    def __repr__(self):
+        return self.name() 
+    
+    @abstractmethod
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        pass
+
 
     def __repr__(self):
         return self.name() 
@@ -411,6 +448,11 @@ class EdgeTransformator(ABC):
 
 
 class CutGroupSendersToGroupReceivers(EdgeTransformator):
+    """
+    Careful wisely name group_senders_mask_fn and group_receivers_mask_fn since the names are used in configuration saving
+    
+    
+    """
     def __init__(
         self,
         group_senders_mask_fn: callable,
@@ -436,6 +478,15 @@ class CutGroupSendersToGroupReceivers(EdgeTransformator):
     def name(self) -> str:
         """Name of the transform function used for authentificate"""
         return self.main_name + self.params_repr
+    
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        config = {"name":"CutGroupSendersToGroupReceivers", 
+                  "parameters":{"verbose":self.verbose,
+                                "group_senders_mask_fn":self.group_senders_mask_fn.__name__,
+                                "group_receivers_mask_fn":self.group_receivers_mask_fn.__name__}
+        }
+        return config
     
     def transform(self, 
                   edge_index:np.ndarray, 
@@ -497,6 +548,16 @@ class KeepKNearestNeighbors(EdgeTransformator):
         """Name of the transform function used for authentificate"""
         return self.main_name + self.params_repr
     
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        config = {"name":"KeepKNearestNeighbors", 
+                  "parameters":{"verbose":self.verbose,
+                                "k":self.k,
+                                "edge_attr_names_used":self.edge_attr_names_used,
+                                "ord":self.ord}
+        }
+        return config
+
     def transform(self, 
                   edge_index:np.ndarray, 
                   edge_attr: pd.DataFrame | None = None, 
@@ -555,7 +616,14 @@ class MaskSelector(ABC):
         """Name of the mask selector used for authentificate"""
         return self.main_name + self.params_repr
     
-
+    def __repr__(self):
+        return self.name() 
+    
+    @abstractmethod
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        pass
+    
     @abstractmethod
     def apply(self, x: pd.DataFrame) -> torch.Tensor:
         pass
@@ -580,6 +648,17 @@ class MaskLowerThanSelector(MaskSelector):
     def params_repr(self) -> str:
         """Representation of the parameters of the mask selector"""
         return f"{self.feature_name}<={self.threshold}"
+
+    
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        config = {"name":"MaskLowerThanSelector", 
+                  "parameters":{"verbose":self.verbose,
+                                "feature_name":self.feature_name,
+                                "threshold":self.threshold
+                                }
+        }
+        return config
 
 
     def apply(self, x: pd.DataFrame) -> torch.Tensor:
@@ -611,6 +690,11 @@ class ValidationHandler(ABC):
         """Name of the validation handler used for authentificate"""
         return self.main_name + self.params_repr
     
+    @abstractmethod
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        pass
+
 
     @abstractmethod
     def apply(self, mask:torch.Tensor) -> list[Tuple[torch.Tensor,torch.Tensor]]:
@@ -647,6 +731,13 @@ class CrossValidationHandler(ValidationHandler):
         return str(self.n_partition)
     
 
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        config = {"name":"CrossValidationHandler", 
+                  "parameters":{"n_partition":self.n_partition}
+        }
+        return config
+    
     def apply(self, mask:torch.Tensor) -> list[Tuple[torch.Tensor,torch.Tensor]]:
         """
         Takes the truth values of the mask and parcelates it. Create a n_partition partition
@@ -682,6 +773,7 @@ class CrossValidationHandler(ValidationHandler):
 
 class HoldPOutValidationHandler(ValidationHandler):
     def __init__(self, p: int = 1):
+        assert p > 0
         super().__init__()
         self.p = p
 
@@ -696,6 +788,12 @@ class HoldPOutValidationHandler(ValidationHandler):
         """Representation of the parameters of the validation handler"""
         return str(self.p)
     
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        config = {"name":"HoldPOutValidationHandler", 
+                  "parameters":{"p":self.p}
+        }
+        return config
 
     def apply(self, mask:torch.Tensor) -> list[Tuple[torch.Tensor,torch.Tensor]]:
         """
@@ -728,6 +826,42 @@ class HoldPOutValidationHandler(ValidationHandler):
             
         return train_val_sets
 
+
+class NoValidationHandler(ValidationHandler):
+    @property
+    def main_name(self) -> str:
+        """Main name of the validation handler"""
+        return "NoValidation"
+
+
+    @property
+    def params_repr(self) -> str:
+        """Representation of the parameters of the validation handler"""
+        return ""
+    
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        config = {"name":"NoValidationHandler", 
+                  "parameters":{}
+        }
+        return config
+
+    def apply(self, mask:torch.Tensor) -> list[Tuple[torch.Tensor,torch.Tensor]]:
+        """
+        Takes the truth values of the mask and parcelates it. Create several partitions with p samples in validation each
+
+        Parameters
+        ----------
+        mask : torch.Tensor
+
+        Returns
+        -------
+        train_val_sets : list[Tuple[torch.Tensor,torch.Tensor]]
+        """
+        new_train_mask = mask.clone()
+        new_val_mask = torch.zeros(len(mask),dtype=torch.bool)
+        train_val_sets = [(new_train_mask,new_val_mask)]
+        return train_val_sets
 
 
 # Pipeline
@@ -810,7 +944,11 @@ class PreprocessingPipeline():
         train_val_sets = self.validation_handler.apply(complete_train_mask)
         return train_val_sets
 
-    def get_dataset_from_raw_data(self,edge_index,edge_attr,x,y):
+    def get_dataset_from_raw_data(self,
+                                  edge_index:np.ndarray, 
+                                  edge_attr: pd.DataFrame | None = None, 
+                                  x: pd.DataFrame | None = None,
+                                  y: pd.DataFrame | None = None) -> list[Data]:
         edge_index,edge_attr,x,y = self.fit_transform(edge_index=edge_index,
                                                       edge_attr=edge_attr,
                                                       x=x,
@@ -833,3 +971,14 @@ class PreprocessingPipeline():
         
         return dataset
 
+    def get_config(self):
+        config = {
+            "transformators": [],
+            "complete_train_mask_selector": self.complete_train_mask_selector.get_config(),
+            "validation_handler": self.complete_train_mask_selector.get_config()  
+        }
+
+        for transformator in self.transformators:
+            config["transformators"].append(transformator.get_config())
+        
+        return config

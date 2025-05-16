@@ -1,3 +1,4 @@
+import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import time
 
@@ -26,42 +27,29 @@ from torch_geometric.utils import (
 from torch_geometric.nn.dense.linear import Linear
 from torch.autograd import Variable
 
+from src.models.generic_model import GenericModel
 
 import src.models.utils.callbacks as callbacks
 import src.models.utils.common as common_utils
 import src.models.utils.weight_constrainers as weight_constrainers
 
 
-class GNNFramework:
+class GNNFramework(GenericModel):
     # Class initialization params
     def __init__(self, 
                  update_node_module, 
-                 device, 
-                 mask_node_fn:Optional[Callable] = None, 
-                 mask_node_attr:Optional[torch.Tensor] = None):
+                 device):
         self.device = device
         self.update_node_module = update_node_module.to(self.device)
-        
-        self.mask_node_fn = mask_node_fn
-        self.mask_node_attr = mask_node_attr
 
 
-    def predict(self, node_attr, edge_index, edge_attr = None, **kwargs):
+    def predict(self, node_attr:Tensor, edge_index:Tensor, edge_attr:Tensor|None = None, **kwargs):
         node_attr = node_attr.to(self.device)
         edge_index = edge_index.to(self.device)
         if not(edge_attr is None):
             edge_attr = edge_attr.to(self.device)
 
-        if not((self.mask_node_fn is None) and (self.mask_node_attr is None)):
-            _node_attr = common_utils.replace_by_value(
-                node_attr,
-                mask_samples=self.mask_node_fn(node_attr),
-                mask_attr=self.mask_node_attr
-            )
-        else:
-            _node_attr = node_attr.clone()
-
-        model_out = self.update_node_module(_node_attr, edge_index, edge_attr, **kwargs)
+        model_out = self.update_node_module(node_attr, edge_index, edge_attr, **kwargs)
         return model_out
 
     # Compute the loss function   
@@ -116,6 +104,7 @@ class GNNFramework:
     
 
     def train_step(self, node_attr, edge_index, edge_attr, labels, train_mask, optimizer, weight_constrainer = None, l1_reg = 0, l2_reg = 0):
+        self.update_node_module.train(True)
         # Zero your gradients for every batch!
         optimizer.zero_grad()
 
@@ -140,6 +129,7 @@ class GNNFramework:
         if not(weight_constrainer is None):
             weight_constrainer(self.update_node_module)
 
+        self.update_node_module.eval()
         return loss
 
     def mae_error_function(self, node_attr, edge_index, edge_attr, labels, mask):
@@ -171,8 +161,14 @@ class GNNFramework:
             "epoch":[],
             "train_loss": [], 
             "train_mae": [],
-            "val_mae": [] 
+            "val_mae": []
             }
+        
+        batch_graph = next(iter(dataset))
+        is_validation_present = hasattr(batch_graph,"val_mask")
+        
+        assert early_stopping_monitor in history, f"{early_stopping_monitor} not a metric followed by the model"
+
         early_stopping_cb = callbacks.EarlyStopping(
             early_stopping_monitor, patience, min_delta=min_delta, retrieve_model=False)
 
@@ -181,14 +177,14 @@ class GNNFramework:
             epoch_start_time = time.time()
 
             # training
-            self.update_node_module.train(True)
             for batch_i, batch_graph in enumerate(dataset):
                 batch_node_attr = batch_graph.x.to(self.device)
                 batch_edge_index = batch_graph.edge_index.to(self.device)
                 batch_edge_attr = batch_graph.edge_attr.to(self.device) if not(batch_graph.edge_attr is None) else None
                 batch_labels = batch_graph.y.to(self.device)
                 batch_train_mask = batch_graph.train_mask.to(self.device)
-                batch_val_mask = batch_graph.val_mask.to(self.device)
+                if is_validation_present:
+                    batch_val_mask = batch_graph.val_mask.to(self.device)
 
                 train_loss = self.train_step(
                     batch_node_attr, 
@@ -201,39 +197,46 @@ class GNNFramework:
                     l1_reg=l1_reg,
                     l2_reg=l2_reg)
 
-                train_mae = self.mae_error_function(
-                    batch_node_attr, 
-                    batch_edge_index, 
-                    batch_edge_attr, 
-                    batch_labels, 
-                    batch_train_mask)
-                
-                val_mae = self.mae_error_function(
-                    batch_node_attr, 
-                    batch_edge_index, 
-                    batch_edge_attr, 
-                    batch_labels, 
-                    batch_val_mask)
+                with torch.no_grad():
+                    train_mae = self.mae_error_function(
+                        batch_node_attr, 
+                        batch_edge_index, 
+                        batch_edge_attr, 
+                        batch_labels, 
+                        batch_train_mask)
+                    
+                    if is_validation_present:
+                        val_mae = self.mae_error_function(
+                            batch_node_attr, 
+                            batch_edge_index, 
+                            batch_edge_attr, 
+                            batch_labels, 
+                            batch_val_mask)
 
                 if verbose:
-                    txt = "epoch: {epoch:.0f}/{epochs:.0f},\n batch_i: {batch_i:.0f}/{n_batch:.0f},\n batch_size: {batch_size:.0f},\n train_loss: {train_loss:.4f},\n train_mae: {train_mae:.4f},\n val_mae: {val_mae:.4f}\n"
-                    print(txt.format(epoch=epoch+1,
-                                     epochs=epochs,
-                                     batch_i=batch_i+1,
-                                     n_batch=len(dataset),
-                                     batch_size=batch_train_mask.sum(),
-                                     train_loss=train_loss.cpu().numpy(),
-                                     train_mae=train_mae.cpu().numpy(),
-                                     val_mae=val_mae.cpu().numpy()), flush=True)
+                    txt = "epoch: {epoch:.0f}/{epochs:.0f},\n batch_i: {batch_i:.0f}/{n_batch:.0f},\n batch_size: {batch_size:.0f},\n train_loss: {train_loss:.4f},\n train_mae: {train_mae:.4f},\n val_mae: {val_mae:4f}\n"
+                    
+                    txt.format(epoch=epoch+1,
+                               epochs=epochs,
+                               batch_i=batch_i+1,
+                               n_batch=len(dataset),
+                               batch_size=batch_train_mask.sum(),
+                               train_loss=train_loss.cpu().numpy(),
+                               train_mae=train_mae.cpu().numpy(),
+                               val_mae=val_mae.cpu().numpy() if is_validation_present else torch.inf)
+                    
+                    print(txt, flush=True)
                 
                 epoch_history["train_loss"].append(
                     (batch_train_mask.sum(), train_loss))
                 epoch_history["train_mae"].append(
                     (batch_train_mask.sum(), train_mae))
-                epoch_history["val_mae"].append(
-                    (batch_val_mask.sum(), val_mae))
+                if is_validation_present:
+                    epoch_history["val_mae"].append(
+                        (batch_val_mask.sum(), val_mae))
+                else:
+                    epoch_history["val_mae"].append((1,torch.inf))
             
-            self.update_node_module.train(False)
 
             epoch_end_time = time.time()
             epoch_time_duration = epoch_end_time - epoch_start_time
@@ -242,8 +245,8 @@ class GNNFramework:
                               for event in epoch_history["train_loss"]])/sum([event[0] for event in epoch_history["train_loss"]])
             train_mae = sum([event[0]*event[1]
                              for event in epoch_history["train_mae"]])/sum([event[0] for event in epoch_history["train_mae"]])
-            train_mae = sum([event[0]*event[1]
-                             for event in epoch_history["val_mae"]])/sum([event[0] for event in epoch_history["val_mae"]])
+            val_mae = sum([event[0]*event[1]
+                           for event in epoch_history["val_mae"]])/sum([event[0] for event in epoch_history["val_mae"]])
             
             history["epoch"].append(epoch)
             history['train_loss'].append(train_loss.cpu())
@@ -279,6 +282,24 @@ class GNNFramework:
         print('== end training ==\n')
 
         return history
+    
+    def save(self,dst_path:str):
+        _dst_path = os.path.splitext(dst_path)[0] 
+        _dst_path = os.path.join(_dst_path,".pt")
+        torch.save(self.update_node_module.state_dict(), _dst_path)
+
+    def load(self,src_path:str):
+        self.update_node_module.load_state_dict(torch.load(src_path,map_location=self.device))
+        self.update_node_module.eval()
+        return self
+
+    def reset_parameters(self):
+        self.update_node_module.reset_parameters()
+    
+    def get_config(self):
+        config = {"device":self.device,
+                  "update_node_module":self.update_node_module.get_config()}
+        return config
 
 
 

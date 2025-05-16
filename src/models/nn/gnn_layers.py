@@ -396,6 +396,38 @@ class MyGATConv(torch_geometric.nn.GATConv):
         parameters_spec.update(new_parameters_spec)
 
         return pd.DataFrame(parameters_spec)
+
+
+    def get_config(self):
+        config = {
+            "name":MyGATConv,
+            "parameters":{
+                "in_channels": self.in_channels,
+                "out_channels": self.out_channels,
+                "heads": self.heads,
+                "concat": self.concat,
+                "negative_slope": self.negative_slope,
+                "dropout": self.dropout,
+                "add_self_loops": self.add_self_loops,
+                "edge_dim": self.edge_dim,
+                "fill_value": self.fill_value,
+                "bias": self.bias,
+                "src_content_mask": self.src_content_mask,
+                "src_edge_mask": self.src_edge_mask,
+                "dst_content_mask": self.dst_content_mask,
+                "dst_edge_mask": self.dst_edge_mask,
+                "src_content_require_grad": self.src_content_require_grad,
+                "src_edge_require_grad": self.src_edge_require_grad,
+                "dst_content_require_grad": self.dst_require_grad,
+                "dst_edge_require_grad": self.dst_edge_require_grad,
+                "src_content_weight_initializer": self.src_content_weight_initializer,
+                "src_edge_weight_initializer": self.src_edge_weight_initializer,
+                "dst_content_weight_initializer": self.dst_content_weight_initializer,
+                "dst_edge_weight_initializer": self.dst_edge_weight_initializer,
+                "edge_weight_initializer": self.edge_weight_initializer,
+            }
+        }
+        return config
     
 
 
