@@ -11,9 +11,9 @@ import torch
 import torch_geometric
 from torch_geometric.data import Data
 
-from src.models.nn_layers import MLPModel
-from src.models.gnn_layers import myGATConv
-from src.models.ML_frameworks import GNN_naive_framework
+from src.models.nn.nn_layers import MLPModel
+from src.models.nn.gnn_layers import myGATConv
+from src.models.nn.ML_frameworks import GNN_naive_framework
 import src.loading as loading
 import src.preprocessing.processing as processing
 

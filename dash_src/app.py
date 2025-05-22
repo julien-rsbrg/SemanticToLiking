@@ -35,5 +35,4 @@ app.layout = html.Div(
 
 if __name__ == "__main__":
     dash_src.data_validation.main()
-
     app.run(debug=True)

@@ -11,9 +11,9 @@ import torch
 import torch_geometric
 from torch_geometric.data import Data
 
-from src.models.nn_layers import MLPModel
-from src.models.gnn_layers import MyBGATConv
-from src.models.ML_frameworks import BGNNFramework
+from src.models.nn.nn_layers import MLPModel
+from src.models.nn.gnn_layers import MyBGATConv
+from src.models.nn.ML_frameworks import BGNNFramework
 import src.loading as loading
 import src.processing.raw_data_cleaning as raw_data_cleaning
 

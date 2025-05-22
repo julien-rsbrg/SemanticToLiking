@@ -26,8 +26,8 @@ from torch_geometric.utils import (
 from torch_geometric.nn.dense.linear import Linear
 from torch.autograd import Variable
 
-from src.models.bnn_layers import MeanFieldGaussianFeedForward, VIModule
-from src.models.nn_layers import myLinear
+from src.models.nn.bnn_layers import MeanFieldGaussianFeedForward, VIModule
+from src.models.nn.nn_layers import myLinear
 
 class MyGATConv(torch_geometric.nn.GATConv):
     def __init__(

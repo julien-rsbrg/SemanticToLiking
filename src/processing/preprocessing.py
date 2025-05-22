@@ -447,7 +447,7 @@ class EdgeTransformator(ABC):
         return new_edge_index, new_edge_attr, x, y
 
 
-class CutGroupSendersToGroupReceivers(EdgeTransformator):
+class KeepGroupSendersToGroupReceivers(EdgeTransformator):
     """
     Careful wisely name group_senders_mask_fn and group_receivers_mask_fn since the names are used in configuration saving
     
@@ -505,9 +505,9 @@ class CutGroupSendersToGroupReceivers(EdgeTransformator):
         is_edge_selected[1,:] = is_receiver_selected[edge_index[1,:]]
         is_edge_selected = is_edge_selected[0,:] * is_edge_selected[1,:]
 
-        new_edge_index = copy.deepcopy(edge_index)[:,~is_edge_selected]
+        new_edge_index = copy.deepcopy(edge_index)[:,is_edge_selected]
         if not(edge_attr is None):
-            new_edge_attr = copy.deepcopy(edge_attr).iloc[~is_edge_selected]
+            new_edge_attr = copy.deepcopy(edge_attr).iloc[is_edge_selected]
         else:
             new_edge_attr = None
         
@@ -868,20 +868,27 @@ class NoValidationHandler(ValidationHandler):
 
 class PreprocessingPipeline():
     """
-    
+    Parameters
+    ----------
+    transformators
     """
     def __init__(
         self,
-        transformators: list[EdgeTransformator|NodeTransformator],
         complete_train_mask_selector: MaskSelector,
+        transformators: list[EdgeTransformator|NodeTransformator],
         validation_handler:ValidationHandler,
         verbose: bool = True
     ):
-        self.transformators = transformators
         self.complete_train_mask_selector = complete_train_mask_selector
+        self.transformators = transformators
         self.validation_handler = validation_handler
         self.verbose = verbose
 
+    def get_train_val_sets(self,x):
+        complete_train_mask = self.complete_train_mask_selector.apply(x)
+        train_val_sets = self.validation_handler.apply(complete_train_mask)
+        return train_val_sets
+    
     def fit(self, 
             edge_index:np.ndarray, 
             edge_attr: pd.DataFrame | None = None, 
@@ -939,21 +946,22 @@ class PreprocessingPipeline():
         )
         return edge_index,edge_attr,x,y
     
-    def get_train_val_sets(self,x):
-        complete_train_mask = self.complete_train_mask_selector.apply(x)
-        train_val_sets = self.validation_handler.apply(complete_train_mask)
-        return train_val_sets
+    
 
     def get_dataset_from_raw_data(self,
                                   edge_index:np.ndarray, 
                                   edge_attr: pd.DataFrame | None = None, 
                                   x: pd.DataFrame | None = None,
                                   y: pd.DataFrame | None = None) -> list[Data]:
+        """
+        Warning: complete_train_mask_selector is applied before any transformator
+        """
+        train_val_sets = self.get_train_val_sets(x)
         edge_index,edge_attr,x,y = self.fit_transform(edge_index=edge_index,
                                                       edge_attr=edge_attr,
                                                       x=x,
                                                       y=y)
-        train_val_sets = self.get_train_val_sets(x)
+        
         dataset = []
         for i in range(train_val_sets):
             data_graph = Data(

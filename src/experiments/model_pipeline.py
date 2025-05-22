@@ -12,9 +12,9 @@ import torch
 import torch_geometric
 from torch_geometric.data import Data
 
-from src.models.nn_layers import MLPModel
-from src.models.gnn_layers import MyGATConv
-from src.models.ML_frameworks import GNNFramework
+from src.models.nn.nn_layers import MLPModel
+from src.models.nn.gnn_layers import MyGATConv
+from src.models.nn.ML_frameworks import GNNFramework
 import src.loading as loading
 import src.processing.raw_data_cleaning as raw_data_cleaning
 
@@ -99,7 +99,7 @@ def run(sim_used:str = "original", dst_folder_path:str|None = None):
         
         # preprocessing 1 - experienced to not experienced
         print("Preprocessing 1")
-        preprocessing_cut = preprocessing.CutGroupSendersToGroupReceivers(
+        preprocessing_cut = preprocessing.KeepGroupSendersToGroupReceivers(
             group_senders_mask_fn= lambda x: x["experience"] > 0,
             group_receivers_mask_fn= lambda x: x["experience"] <= 0,
         )
@@ -149,7 +149,7 @@ def run(sim_used:str = "original", dst_folder_path:str|None = None):
             add_self_loops=False,
             edge_dim=1,
             dropout=0.0,
-            bias=False,
+            bias=True,
             src_content_mask=src_content_mask,
             src_edge_mask=src_edge_mask,
             dst_content_mask=dst_content_mask,
@@ -223,4 +223,4 @@ def run(sim_used:str = "original", dst_folder_path:str|None = None):
 
 
 if __name__ == "__main__":
-    run(sim_used="original",dst_folder_path="src/experiments/results/2025-05-13_19-38_results")
+    run(sim_used="original",dst_folder_path="src/experiments/results/2025-05-16_01-50_results")

@@ -131,11 +131,11 @@ def prepare_graph_for_participant(data:pd.DataFrame, participant_id:any, sim_use
 
     # similarity
     if sim_used == "ones":
-        subdata["test_sim"] = np.ones(len(subdata))
+        subdata["_sim"] = np.ones(len(subdata))
     elif sim_used == "random":
-        subdata["test_sim"] = np.random.rand(len(subdata))
+        subdata["_sim"] = np.random.rand(len(subdata))
     elif sim_used == "original":
-        subdata["test_sim"] = subdata["senenceBERT_mpnet_similarity"]
+        subdata["_sim"] = subdata["senenceBERT_mpnet_similarity"]
     else:
         raise NotImplementedError("Don't know sim_used =", sim_used)
 
@@ -143,7 +143,7 @@ def prepare_graph_for_participant(data:pd.DataFrame, participant_id:any, sim_use
         complete_data_table=subdata,
         node_attr_names=["liking","experience"],
         node_label_names=["liking"],
-        edge_attr_names=["test_sim"],
+        edge_attr_names=["_sim"],
         return_word_to_index=True)
 
     # scaling only the liking

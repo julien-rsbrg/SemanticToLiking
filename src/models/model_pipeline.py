@@ -38,6 +38,8 @@ class ModelPipeline():
             subfolder_graph_path = os.path.join(self.dst_folder_path,f"graph_{graph_id}")
             recursive_mkdirs(subfolder_graph_path)
 
+            self.model.save(os.path.join(subfolder_graph_path,"model_init"))
+
             history = self.model.fit(dataset=[graph],**kwargs)
             history = pd.DataFrame(history)
             history.to_csv(os.path.join(subfolder_graph_path,"history.csv"))
@@ -54,5 +56,5 @@ class ModelPipeline():
             prediction_table = pd.DataFrame(prediction_table)
             prediction_table.to_csv(os.path.join(subfolder_graph_path,"prediction_table.csv"))
             
-            self.model.save(os.path.join(subfolder_graph_path,"model"))
+            self.model.save(os.path.join(subfolder_graph_path,"model_trained"))
             self.model.reset_parameters()
