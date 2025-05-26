@@ -387,19 +387,24 @@ def run_inference(n_clicks,constraints,formula,mask_treatment,model_selected,gro
     if formula is None or formula == "":
         return ""
 
-
     data, mask_treatment = utils.restrict_data(data,group_by,groups_kept=[model_selected],mask_treatment=np.array(mask_treatment))
     if constraints == "keep only constraint compliants":
         data = data[mask_treatment]
     elif constraints == "keep only not constraint compliants":
         data = data[~mask_treatment]
+    
+    if len(data) == 0:
+        return "No data"
 
     results = smf.ols(formula, data=data).fit()
+    print("== results.summary() ==\n\n",results.summary(),"\n\n == end summary ==")
 
-    text = results.summary().__repr__()
-    split_text = text.split("\n")
-    _text = ""
+    # TODO: improve based on this
+    # text = results.summary().__repr__()
+    # split_text = text.split("\n")
+    # _text = ""
     
-    for m in split_text:
-        _text += m.replace(" ","-") + "\n\n"
-    return _text
+    # for m in split_text:
+    #    _text += m.replace(" ","-") + "\n\n"
+
+    return f"see terminal for:\n\nconstraints: {constraints}\n\nformula: {formula}"

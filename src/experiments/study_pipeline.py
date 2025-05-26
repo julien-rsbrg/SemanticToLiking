@@ -1,6 +1,8 @@
 import time
 import os
 
+import pandas as pd
+
 import src.data_handler as data_handler
 
 from src.processing.raw_data_cleaning import prepare_graph_for_participant
@@ -47,7 +49,7 @@ if __name__ == "__main__":
             dst_folder_path=dst_folder_path)
         
         model_pipeline.save_config(supplementary_config = supplementary_config)
-        graphs_dataset = model_pipeline.run_preprocessing()
+        graphs_dataset = model_pipeline.run_preprocessing(graph = participant_graph)
         model_pipeline.run_models(graphs_dataset=graphs_dataset, **supplementary_config["model_fit_params"])
 
         time_end_participant = time.time()

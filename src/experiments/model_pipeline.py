@@ -15,12 +15,11 @@ from torch_geometric.data import Data
 from src.models.nn.nn_layers import MLPModel
 from src.models.nn.gnn_layers import MyGATConv
 from src.models.nn.ML_frameworks import GNNFramework
-import src.loading as loading
+import src.data_handler as data_handler
 import src.processing.raw_data_cleaning as raw_data_cleaning
 
 from src.visualization.analyse_model import plot_errors_labels_comparison, get_prediction_table
 
-from src.pipeline import GeneralizerRun 
 import src.processing.preprocessing as preprocessing
 import src.utils
 
@@ -74,7 +73,7 @@ def run(sim_used:str = "original", dst_folder_path:str|None = None):
     src.utils.recursive_mkdirs(dst_history_folder_path)
 
     ## Data
-    data = loading.load_data()
+    data = data_handler.load_data()
 
     def nor_function(a,b):
         return (a or b) and not(a and b)

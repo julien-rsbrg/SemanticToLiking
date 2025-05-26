@@ -1,5 +1,8 @@
 import os
+import numpy as np
 import pandas as pd
+
+from torch_geometric.data import Data
 
 from src.processing.preprocessing import PreprocessingPipeline
 from src.models.generic_model import GenericModel
@@ -17,7 +20,7 @@ class ModelPipeline():
         recursive_mkdirs(self.dst_folder_path)
 
 
-    def save_config(self,supplementary_config):
+    def save_config(self,supplementary_config,file_name = "config.yml"):
         """
         Recommended to pass the kwargs parameters given to run_models inside the supplementary_config
         """
@@ -25,15 +28,20 @@ class ModelPipeline():
         config["preprocessing_pipeline"] = self.preprocessing_pipeline.get_config()
         config["model"] = self.model.get_config()
         config["other"] = supplementary_config
-        save_yaml(config, dst_path=os.path.join(self.dst_folder_path,"config.yml"))
+        save_yaml(config, dst_path=os.path.join(self.dst_folder_path,file_name))
 
 
-    def run_preprocessing(self):
-        graphs_dataset = self.preprocessing_pipeline.get_dataset_from_raw_data()
+    def run_preprocessing(self,graph:Data):
+        graphs_dataset = self.preprocessing_pipeline.get_dataset_from_raw_data(
+            edge_index = graph.edge_index.numpy(), 
+            edge_attr = pd.DataFrame(graph.edge_attr, columns = graph.edge_attr_names),
+            x = pd.DataFrame(graph.x, columns = graph.x_names),
+            y = pd.DataFrame(graph.y, columns = graph.y_names)
+        )
         return graphs_dataset
+    
 
-
-    def run_models(self,graphs_dataset, **kwargs):
+    def run_models(self, graphs_dataset, **kwargs):
         for graph_id, graph in enumerate(graphs_dataset):
             subfolder_graph_path = os.path.join(self.dst_folder_path,f"graph_{graph_id}")
             recursive_mkdirs(subfolder_graph_path)
