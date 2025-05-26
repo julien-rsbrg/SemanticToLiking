@@ -1,0 +1,6 @@
+model_name: super_model_1
+varying_params:
+- c
+- d
+- b
+- a

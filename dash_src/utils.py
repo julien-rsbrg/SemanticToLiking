@@ -31,36 +31,21 @@ def recursive_mkdirs(folder_path:str)->None:
             os.makedirs(folder_path)
     
     
-def handle_plot_or_save(dst_file_path:str|None=None)->None:
-    """
-    If a path is given, it will save the image otherwise it shows it.
 
-    Arguments
-    ---------
-    - dst_file_path: (str|None)
-      potential destination of the image kept in matplotlib memory    
-    """
-    if dst_file_path is not None:
-        dst_folder_path = os.path.dirname(dst_file_path)
-        recursive_mkdirs(dst_folder_path)
-        plt.savefig(dst_file_path)
-        plt.close()
-    else:
-        plt.show()
+def restrict_data(data:pd.DataFrame,group_by,groups_kept,mask_treatment):
+  mask_groups_kept = data[group_by].isin(groups_kept)
+  data = data[mask_groups_kept]
+  data.reset_index(inplace=True,drop=True)
+  data = data.loc[pd.Series(pd.Categorical(data[group_by],
+                                           categories=groups_kept, 
+                                           ordered=True)
+                                           ).sort_values().index
+                                           ]
+  #print("mask_groups_kept",mask_groups_kept)
+  #print("mask_treatment",mask_treatment)
+  mask_treatment = mask_treatment[mask_groups_kept.to_numpy()] 
+  return data, mask_treatment
 
-
-def read_yaml(file_path:str)->dict:
-  """
-  Read a yaml file
-
-  Arguments
-  ---------
-  - file_path: (str)
-    yaml file to read
-  """
-  with open(file_path, 'r') as file:
-    data = yaml.safe_load(file)
-  return data
 
 
 
@@ -224,3 +209,5 @@ def get_slider_params(var_values:pd.Series,ticks_per_range:int,n_potential_value
     marks = {v:"%.2f"%v for v in tick_vals}
 
   return vmin,vmax,step,marks
+
+

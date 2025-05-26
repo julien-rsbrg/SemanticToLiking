@@ -13,8 +13,10 @@ if __name__ == "__main__":
 
     study_folder_path = "experiments/study_2025-05-16"
     study_raw_folder_path = os.path.join(study_folder_path,"raw")
-    supplementary_config = {"sim_used":"original",
-                            "model_fit":{}}
+    supplementary_config = {
+        "model_name":"my_super_model",
+        "sim_used":"original",
+        "model_fit_params":{}}
 
     participant_indices = data["participant"].unique()
     for participant_id in participant_indices:
@@ -46,7 +48,7 @@ if __name__ == "__main__":
         
         model_pipeline.save_config(supplementary_config = supplementary_config)
         graphs_dataset = model_pipeline.run_preprocessing()
-        model_pipeline.run_models(graphs_dataset=graphs_dataset, **supplementary_config["model_fit"])
+        model_pipeline.run_models(graphs_dataset=graphs_dataset, **supplementary_config["model_fit_params"])
 
         time_end_participant = time.time()
 

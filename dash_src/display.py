@@ -4,14 +4,19 @@ Keeps all the functions creating figures
 
 import numpy as np
 import pandas as pd
+from scipy import stats
+
 
 import plotly.graph_objects as go
 
 import dash_src.utils as utils
 
 ALL_SAMPLES_COLOR = '#2a8cf5'
+ALL_SAMPLES_SYMBOL = "circle"
 COMPLIANT_COLOR = "#5cbd01"
+COMPLIANT_SYMBOL = "x"
 NOT_COMPLIANT_COLOR = "#e80000"
+NOT_COMPLIANT_SYMBOL = "triangle-down"
 
 def create_parcoords(df:pd.DataFrame,vars:list[str],color_var:str)->go.Figure:
     """
@@ -183,9 +188,17 @@ def create_violins(df:pd.DataFrame,vars_name:list[str],mask_treatment:np.ndarray
     return fig
 
 
-def create_pairplot(df:pd.DataFrame,x_var:str,y_var:str,mask_treatment:np.ndarray|None=None,title:str="")->go.Figure:
+def create_pairplot(
+        df:pd.DataFrame,
+        x_var:str,
+        y_var:str,
+        mask_treatment:np.ndarray|None=None,
+        group_by:str|None = None,
+        title:str="")->go.Figure:
     """
     Create a plotly pairplot
+
+    TODO: merge with plot_2d_scatter
 
     Arguments
     ---------
@@ -200,39 +213,78 @@ def create_pairplot(df:pd.DataFrame,x_var:str,y_var:str,mask_treatment:np.ndarra
     
     - mask_treatment: (np.ndarray|None)
         Flag array. Values that are True are 'constraints compliant'. If None, doesn't make a distinction.
+
+    - group_by: (...)
+        TODO
     
     - title: (str)
         Title of the plot
     
     Returns
+    -------
     - go.Figure
         Pairplot plotly
     """
+    assert group_by is None or group_by in df
+
     fig = go.Figure()
 
     if mask_treatment is None:
-        fig.add_trace(go.Scatter(
-            x=df[x_var],
-            y=df[y_var],
-            mode="markers",
-            name="All samples",
-            marker=dict(color=ALL_SAMPLES_COLOR)
-        ))
+        if group_by is None:
+            fig.add_trace(go.Scatter(
+                x=df[x_var],
+                y=df[y_var],
+                mode="markers",
+                name="all samples",
+                marker=dict(color=ALL_SAMPLES_COLOR),
+                showlegend=True
+            ))
+        else:
+            for i,v in enumerate(df[group_by].unique()):
+               mask = df[group_by] == v
+               fig.add_trace(go.Scatter(
+                    x=df[mask][x_var],
+                    y=df[mask][y_var],
+                    mode="markers",
+                    name=f"all samples -- {group_by}: {v}",
+                    marker=dict(symbol=ALL_SAMPLES_SYMBOL),
+                    showlegend=True
+                )) 
     else:
-        fig.add_trace(go.Scatter(
-            x=df[mask_treatment][x_var],
-            y=df[mask_treatment][y_var],
-            mode="markers",
-            name="constraints compliant",
-            marker=dict(color=COMPLIANT_COLOR)
-        ))
-        fig.add_trace(go.Scatter(
-            x=df[~mask_treatment][x_var],
-            y=df[~mask_treatment][y_var],
-            mode="markers",
-            name="not constraints compliant",
-            marker=dict(color=NOT_COMPLIANT_COLOR)
-        ))
+        if group_by is None:
+            fig.add_trace(go.Scatter(
+                x=df[mask_treatment][x_var],
+                y=df[mask_treatment][y_var],
+                mode="markers",
+                name="constraints compliant",
+                marker=dict(color=COMPLIANT_COLOR),
+                showlegend=True
+            ))
+            fig.add_trace(go.Scatter(
+                x=df[~mask_treatment][x_var],
+                y=df[~mask_treatment][y_var],
+                mode="markers",
+                name="not constraints compliant",
+                marker=dict(color=NOT_COMPLIANT_COLOR)
+            ))
+        else:
+            for i,v in enumerate(df[group_by].unique()):
+                mask = df[group_by] == v
+                fig.add_trace(go.Scatter(
+                    x=df[mask_treatment * mask][x_var],
+                    y=df[mask_treatment * mask][y_var],
+                    mode="markers",
+                    name=f"constraints compliant -- {group_by}: {v}",
+                    marker=dict(symbol=COMPLIANT_SYMBOL),
+                    showlegend=True
+                ))
+                fig.add_trace(go.Scatter(
+                    x=df[(~mask_treatment) * mask][x_var],
+                    y=df[(~mask_treatment) * mask][y_var],
+                    mode="markers",
+                    name=f"not constraints compliant -- {group_by}: {v}",
+                    marker=dict(symbol=NOT_COMPLIANT_SYMBOL)
+                ))
 
     fig.update_layout(
         title=title,
@@ -242,7 +294,6 @@ def create_pairplot(df:pd.DataFrame,x_var:str,y_var:str,mask_treatment:np.ndarra
     )
     
     return fig
-
 
 def create_line_scatter(df:pd.DataFrame,x_var:str,vars_name:list[str],group_name:str,title:str="",fig:go.Figure=None)->go.Figure:
     """
@@ -384,6 +435,104 @@ def create_2d_scatter(
     return fig
 
 
+def create_violin_distrib(
+        df: pd.DataFrame,
+        var_x: str, 
+        var_y: str, 
+        mask_treatment: np.ndarray|None = None, 
+        group_by: str|None = None,
+        title: str = ""):
+    fig = go.Figure()
+
+    if mask_treatment is None:
+        if group_by is None:
+            fig.add_trace(
+                go.Violin(
+                    x=df[var_x],
+                    y=df[var_y],
+                    pointpos=-1,
+                    showlegend=True
+                )
+            )
+        else:
+            for v in df[group_by].unique():
+                mask = df[group_by] == v
+                fig.add_trace(
+                    go.Violin(
+                        x=df[mask][var_x],
+                        y=df[mask][var_y],
+                        legendgroup=v, 
+                        scalegroup=v, 
+                        name=v,
+                        pointpos=-1,
+                        showlegend=True
+                    )
+                )
+            
+    else:
+        if group_by is None:
+            fig.add_trace(
+                go.Violin(
+                    x=df[mask_treatment][var_x],
+                    y=df[mask_treatment][var_y],
+                    legendgroup="constraints compliant", 
+                    scalegroup="constraints compliant", 
+                    name="constraints compliant",
+                    line_color=COMPLIANT_COLOR,
+                    pointpos=-1,
+                    showlegend=True
+                )
+            )
+            fig.add_trace(
+                go.Violin(
+                    x=df[~mask_treatment][var_x],
+                    y=df[~mask_treatment][var_y],
+                    legendgroup="not constraints compliant", 
+                    scalegroup="not constraints compliant", 
+                    name="not constraints compliant",
+                    line_color=NOT_COMPLIANT_COLOR,
+                    pointpos=-1
+                )
+            )
+        else:
+            for v in df[group_by].unique():
+                mask = df[group_by] == v
+                fig.add_trace(
+                    go.Violin(
+                        x=df[mask_treatment * mask][var_x],
+                        y=df[mask_treatment * mask][var_y],
+                        legendgroup=f"constraints compliant -- {group_by}: {v}", 
+                        scalegroup=f"constraints compliant -- {group_by}: {v}", 
+                        name=f"constraints compliant -- {group_by}: {v}",
+                        #line_color=COMPLIANT_COLOR,
+                        pointpos=-1,
+                        showlegend=True
+                    )
+                )
+                fig.add_trace(
+                    go.Violin(
+                        x=df[(~mask_treatment) * mask][var_x],
+                        y=df[(~mask_treatment) * mask][var_y],
+                        legendgroup=f"not constraints compliant -- {group_by}: {v}", 
+                        scalegroup=f"not constraints compliant -- {group_by}: {v}", 
+                        name=f"not constraints compliant -- {group_by}: {v}",
+                        #line_color=NOT_COMPLIANT_COLOR,
+                        pointpos=-1
+                    )
+                )
+
+    fig.update_traces(
+        box_visible=True, 
+        meanline_visible=True,
+        jitter=0.1,
+        points="all")
+    fig.update_layout(
+        title = title,
+        violinmode='group',
+        xaxis_title=var_x,
+        yaxis_title=var_y)
+    return fig
+
 def create_simple_histo(df:pd.DataFrame,var_name:str,nbinsx:int=20,fig:go.Figure|None=None):
     """
     Create a histogram or add it on top of another figure (fig)
@@ -433,3 +582,164 @@ def create_simple_histo(df:pd.DataFrame,var_name:str,nbinsx:int=20,fig:go.Figure
     _fig = go.Figure(data=fig)
 
     return _fig
+
+
+def create_grouped_scatter_plot_matrix(data:pd.DataFrame,var:str,join_on:str,group_by:str,title:str=""):
+    # refactor data
+    joined_data = None
+    for v in  data[group_by].unique():
+        data_sample = data[data[group_by] == v]
+        data_sample = data_sample.rename(columns={var:var+":"+str(v)})
+        if joined_data is None:
+            joined_data = data_sample
+        else:
+            joined_data = pd.merge(joined_data,data_sample,on=join_on,how="outer")
+
+    joined_data = joined_data[[join_on]+[var+":"+str(v) for v in data[group_by].unique()]]
+
+    # collect data
+    dimensions = []
+    for v_group in data[group_by].unique():
+        dimensions.append({"label":v_group,"values":joined_data[var+":"+v_group]})
+
+    # flesh out the figure
+    fig = go.Figure(data=go.Splom(
+        dimensions=dimensions,
+        diagonal_visible=False, # remove plots on diagonal
+        text=join_on + ": " + joined_data[join_on].astype(str),
+        marker=dict(line_color='white', line_width=0.5)))
+
+    fig.update_layout(title_text=title)
+
+    return fig
+
+
+
+def create_grouped_heatmap(data:pd.DataFrame,var:str,fn:str,join_on:str,group_by:str,title:str=""):
+    possible_group_values = data[group_by].unique()
+
+    # refactor data
+    joined_data = None
+    for v in possible_group_values:
+        data_sample = data[data[group_by] == v]
+        data_sample = data_sample.rename(columns={var:var+":"+str(v)})
+        if joined_data is None:
+            joined_data = data_sample
+        else:
+            joined_data = pd.merge(joined_data,data_sample,on=join_on,how="outer")
+
+    joined_data = joined_data[[join_on]+[var+":"+str(v) for v in possible_group_values]]
+    
+    # apply function
+    z = []
+    p_values = [] # when used
+    if fn == "mean difference y-x":
+        for v_group_y in possible_group_values:
+            new_row = []
+            for v_group_x in possible_group_values:
+                print("joined_data[var+':'+str(v_group_y)]",joined_data[var+":"+str(v_group_y)])
+                print("joined_data[var+':'+str(v_group_x)]",joined_data[var+":"+str(v_group_x)])
+                print("diff",np.mean(joined_data[var+":"+str(v_group_y)] - joined_data[var+":"+str(v_group_x)]) )
+                diff = np.mean(joined_data[var+":"+str(v_group_y)] - joined_data[var+":"+str(v_group_x)])
+                new_row.append(diff)
+            z.append(new_row)
+
+    elif fn == "mean absolute difference y-x":
+        for v_group_y in possible_group_values:
+            new_row = []
+            for v_group_x in possible_group_values:
+                diff = np.abs(np.mean(joined_data[var+":"+str(v_group_y)] - joined_data[var+":"+str(v_group_x)]))
+                new_row.append(diff)
+            z.append(new_row)
+
+    elif fn == "correlation (Pearson)":
+        for v_group_y in possible_group_values:
+            new_row = []
+            new_row_p = []
+            for v_group_x in possible_group_values:
+                mask_na = ~(joined_data[var+":"+str(v_group_y)].isna() + joined_data[var+":"+str(v_group_x)].isna())
+                if len(joined_data[mask_na]) >=2:
+                    res = stats.pearsonr(joined_data[mask_na][var+":"+str(v_group_y)], joined_data[mask_na][var+":"+str(v_group_x)])
+                    new_row.append(res.statistic)
+                    new_row_p.append(res.pvalue)
+                else:
+                    new_row.append(np.nan)
+                    new_row_p.append(np.nan)
+            z.append(new_row)
+            p_values.append(new_row_p)
+
+    elif fn == "correlation (Spearman)":
+        for v_group_y in possible_group_values:
+            new_row = []
+            new_row_p = []
+            for v_group_x in possible_group_values:
+                mask_na = ~(joined_data[var+":"+str(v_group_y)].isna() + joined_data[var+":"+str(v_group_x)].isna())
+                if len(joined_data[mask_na]) >=2:
+                    res = stats.spearmanr(joined_data[mask_na][var+":"+str(v_group_y)], joined_data[mask_na][var+":"+str(v_group_x)])
+                    new_row.append(res.statistic)
+                    new_row_p.append(res.pvalue)
+                else:
+                    new_row.append(np.nan)
+                    new_row_p.append(np.nan)
+            z.append(new_row)
+            p_values.append(new_row_p)
+    else:
+        raise NotImplementedError(f"Function {fn} is unknown")
+
+
+    # flesh out the figure
+    if len(p_values):
+        # p_values in use
+        text = pd.DataFrame(z).map('{:.3f}'.format).astype(str) + " - p:"+ pd.DataFrame(p_values).map('{:.3f}'.format).astype(str)
+    else:
+        text = pd.DataFrame(z).map('{:.3f}'.format).astype(str)
+
+    fig = go.Figure(data=go.Heatmap(
+        z=z,
+        x=data[group_by].unique(),
+        y=data[group_by].unique(),
+        text=text,
+        texttemplate="%{text}"))
+
+    fig.update_layout(title_text=title)
+
+    return fig
+
+
+
+def plot_pairplot_matrix(
+        data: pd.DataFrame, 
+        var_names: list[str], 
+        color_var_name:str|None = None, 
+        text_var_name:str|None = None, 
+        title = ""):
+    
+    dimensions = [{"label":name, "values":data[name]} for name in var_names]
+
+    text = None
+    if not(text_var_name is None):
+        coerced_numeric_df = pd.to_numeric(data[text_var_name], errors='coerce') 
+        if ((~coerced_numeric_df.isna()) + data[text_var_name].isna()).sum() == len(data[text_var_name]):
+            # every value is nan or numeric
+            text = text_var_name + ": " + data[text_var_name].map('{:.3f}'.format).astype(str)
+        else:
+            text = text_var_name +": " + data[text_var_name].astype(str)
+
+    fig = go.Figure(data=go.Splom(
+                    dimensions=dimensions,
+                    diagonal_visible=False, # remove plots on diagonal
+                    text = text,
+                    marker=dict(color=data[color_var_name] if not(color_var_name is None) else None,
+                                showscale=True,
+                                colorscale='Viridis', 
+                                line_color='white',
+                                line_width=0.5,
+                                colorbar = {"title":color_var_name}),
+                    
+                    ))
+
+    fig.update_layout(
+        title_text = title
+    )
+
+    return fig

@@ -1,3 +1,3 @@
-import dash_src.utils as utils
+from src.utils import read_yaml
 
-config = utils.read_yaml("dash_src/configs/config_16-07.yml")
+config = read_yaml("dash_src/configs/config_16-07.yml")

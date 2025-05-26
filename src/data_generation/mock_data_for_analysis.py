@@ -11,19 +11,21 @@ import numpy as np
 from src.utils import recursive_mkdirs,save_yaml
 
 def run():
-    dst_folder_path = "src/data_generation/examples/raw/study_0"
+    dst_folder_path = "src/data_generation/examples/raw/study_2"
 
-    for participant_id in range(3):
+    for participant_id in range(6):
         participant_folder_path = os.path.join(dst_folder_path,f"participant_{participant_id}")
         recursive_mkdirs(participant_folder_path)
 
-        config = {"a":np.random.randn()*2 + 5,
-                  "b":np.random.randn()*1 + 7,
-                  "c":np.random.randint(0,10),
-                  "d":np.random.randint(-5,4)}
+        config = {
+            "model_name":"my_model_2",
+            "a":np.random.randn()*2 + 5,
+            "b":np.random.randn()*1 + 7,
+            "c":np.random.randint(0,10),
+            "d":np.random.randint(-5,4)}
         save_yaml(config,dst_path=os.path.join(participant_folder_path,"config.yml"))
 
-        for graph_id in range(10):
+        for graph_id in range(4):
             graph_folder_path = os.path.join(participant_folder_path,f"graph_{graph_id}")
             recursive_mkdirs(graph_folder_path)
 

@@ -34,11 +34,17 @@ def read_yaml(src_path:str) -> dict:
         data = yaml.safe_load(file)
     return data
 
+
 def save_yaml(data:dict,dst_path:str):
     assert os.path.splitext(dst_path)[1] in [".yml",".yaml"], f"Wrong extension for the file {dst_path}: should be .yml or .yaml"
     assert os.path.dirname(dst_path) == "" or os.path.exists(os.path.dirname(dst_path)), f"Directory {os.path.dirname(dst_path)} does not exist"
 
     with open(dst_path, 'w') as file:
         yaml.dump(data, file)
+
+if __name__ == "__main__":
+    import pandas as pd
+    save_yaml(pd.DataFrame({"a":[0],"b":[3]}).iloc[0].to_dict(),"here.yml")
+    print(read_yaml("here.yml"))
 
 

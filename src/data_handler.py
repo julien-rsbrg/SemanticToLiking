@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from src.utils import recursive_mkdirs, read_yaml
+from src.utils import recursive_mkdirs, read_yaml, save_yaml
 
 def load_data():
     print("== Load Data: start ==")
@@ -73,9 +73,11 @@ def postprocess(src_folder_path,dst_folder_path):
 
     # aggregate across participants
     overall_summaries = []
+    config_params = []
     for participant_folder_name in os.listdir(src_folder_path):
         config = read_yaml(os.path.join(src_folder_path,participant_folder_name,"config.yml"))
         config = pd.DataFrame(config,index=[0])
+        config_params = config.columns.tolist()
         config["participant_folder_name"] = participant_folder_name
 
         summary = pd.read_csv(os.path.join(dst_folder_path,participant_folder_name,"summary.csv"), index_col=0)
@@ -86,8 +88,21 @@ def postprocess(src_folder_path,dst_folder_path):
     
 
     overall_summaries = pd.concat(overall_summaries,axis=0)
+    overall_summaries.reset_index(inplace=True,drop=True)
     overall_summaries.to_csv(os.path.join(dst_folder_path,"overall_summaries.csv"))
+
+    # save externally the constant config params
+    constant_params = []
+    for param_name in config_params:
+        if len(overall_summaries[param_name].unique()) == 1:
+            constant_params.append(param_name)
+    constant_config = overall_summaries[constant_params].iloc[0].to_dict()
+    varying_params = list(set(config_params) - set(constant_params))
+    constant_config["varying_params"] = varying_params
+    save_yaml(constant_config,os.path.join(dst_folder_path,"constant_config.yml"))
     
 
 if __name__ == "__main__":
     postprocess("src/data_generation/examples/raw/study_0","src/data_generation/examples/processed/study_0")
+    postprocess("src/data_generation/examples/raw/study_1","src/data_generation/examples/processed/study_1")
+    postprocess("src/data_generation/examples/raw/study_2","src/data_generation/examples/processed/study_2")
