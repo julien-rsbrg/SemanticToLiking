@@ -6,10 +6,6 @@ from sklearn.preprocessing import StandardScaler
 import torch
 from torch_geometric.data import Data
 
-import src.processing.preprocessing as preprocessing
-
-
-
 
 def build_node_table(complete_data_table:pd.DataFrame,
                      feature_names:list[str],

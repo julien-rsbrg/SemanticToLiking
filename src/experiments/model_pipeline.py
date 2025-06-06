@@ -20,7 +20,7 @@ import src.processing.raw_data_cleaning as raw_data_cleaning
 
 from src.visualization.analyse_model import plot_errors_labels_comparison, get_prediction_table
 
-import src.processing.preprocessing as preprocessing
+import src.processing.raw_data_cleaning as preprocessing
 import src.utils
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

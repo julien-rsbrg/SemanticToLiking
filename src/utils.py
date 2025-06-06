@@ -1,5 +1,12 @@
+from collections.abc import MutableMapping
+from typing import Iterable
+
 import os
 import yaml
+
+import numpy as np
+import pandas as pd
+import torch
 
 def recursive_mkdirs(folder_path:str)->None:
     """
@@ -20,11 +27,76 @@ def recursive_mkdirs(folder_path:str)->None:
             os.makedirs(folder_path)
 
 
+
 def locate_in_list(var,list):
     for i in range(len(list)):
         if var == list[i]:
             return i
     return None
+
+
+def _flatten_dict_gen(d, parent_key, sep):
+    for k, v in d.items():
+        new_key = str(parent_key) + sep + str(k) if parent_key else k
+        if isinstance(v, MutableMapping):
+            yield from flatten_dict(v, new_key, sep=sep).items()
+        elif isinstance(v, list):
+            yield from flatten_dict({i:v[i] for i in range(len(v))},new_key,sep=sep).items()
+        else:
+            yield new_key, v
+
+
+def flatten_dict(d: MutableMapping, parent_key: str = '', sep: str = '.'):
+    return dict(_flatten_dict_gen(d, parent_key, sep))
+
+
+def _turn_dict_values_tensor_to_list_gen(d):
+    for k, v in d.items():
+        if isinstance(v, MutableMapping):
+            yield k, turn_dict_values_tensor_to_list(v)
+        elif isinstance(v, torch.Tensor):
+            yield k, v.detach().cpu().numpy().tolist()
+        else:
+            yield k, v
+
+def turn_dict_values_tensor_to_list(d: MutableMapping):
+    return dict(_turn_dict_values_tensor_to_list_gen(d))
+
+def _turn_dict_values_iterable_to_list_gen(d: MutableMapping):
+    for k, v in d.items():
+        if isinstance(v, MutableMapping):
+            yield k, turn_dict_values_iterable_to_list(v)
+        elif isinstance(v, Iterable) and not(isinstance(v,str)):
+            yield k, list(turn_dict_values_iterable_to_list({i:v for i,v in enumerate(v)}).values())
+        else:
+            yield k, v
+
+def turn_dict_values_iterable_to_list(d: MutableMapping):
+    _d = turn_dict_values_tensor_to_list(d)
+    return dict(_turn_dict_values_iterable_to_list_gen(_d))
+
+
+def ensure_one_dim_dict(d: MutableMapping):
+    new_d = {}
+    for k,v in d.items():
+        if not(isinstance(v,Iterable)):
+            new_d[k] = [v]
+        elif isinstance(v,np.ndarray) and len(v.shape) != 1:
+            if len(v.shape) == 0:
+                new_d[k] = np.expand_dims(v,0)
+            else:
+                new_d[k] = v.flatten()    
+        elif isinstance(v,torch.Tensor) and len(v.size()) != 1:
+            new_d[k] = v.flatten()   
+        else:
+            new_d[k] = v
+    return new_d
+
+
+def convert_dataframe_to_dict(df:pd.DataFrame):
+    raw_d = df.to_dict()
+    processed_d = {k:list(v.values()) for k,v in raw_d.items()}
+    return processed_d
 
 
 def read_yaml(src_path:str) -> dict:
@@ -41,6 +113,7 @@ def save_yaml(data:dict,dst_path:str):
 
     with open(dst_path, 'w') as file:
         yaml.dump(data, file)
+
 
 if __name__ == "__main__":
     import pandas as pd

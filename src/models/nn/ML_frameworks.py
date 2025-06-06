@@ -285,7 +285,7 @@ class GNNFramework(GenericModel):
     
     def save(self,dst_path:str):
         _dst_path = os.path.splitext(dst_path)[0] 
-        _dst_path = os.path.join(_dst_path,".pt")
+        _dst_path = _dst_path+".pt"
         torch.save(self.update_node_module.state_dict(), _dst_path)
 
     def load(self,src_path:str):
@@ -297,10 +297,12 @@ class GNNFramework(GenericModel):
         self.update_node_module.reset_parameters()
     
     def get_config(self):
-        config = {"device":self.device,
+        config = {"device":self.device.type,
                   "update_node_module":self.update_node_module.get_config()}
         return config
 
+    def get_dict_params(self):
+        return self.update_node_module.get_dict_parameters()
 
 
 class BGNNFramework(GNNFramework):

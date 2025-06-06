@@ -2,7 +2,10 @@ import os
 import numpy as np
 import pandas as pd
 
-from src.utils import recursive_mkdirs, read_yaml, save_yaml
+from typing import Iterable
+
+from src.processing.raw_data_cleaning import build_node_table
+from src.utils import recursive_mkdirs, read_yaml, save_yaml, flatten_dict, convert_dataframe_to_dict, turn_dict_values_tensor_to_list
 
 def load_data():
     print("== Load Data: start ==")
@@ -13,6 +16,20 @@ def load_data():
 
     print("== Load Data: end ==")
     return data
+
+def get_participant_data(raw_data:pd.DataFrame) -> pd.DataFrame:
+    participant_features = ["participant","depression","depressionCont","female","age"]
+    participant_data = raw_data[participant_features].drop_duplicates(inplace=False).reset_index(drop=True)
+
+    node_data_table = build_node_table(raw_data,["liking","experience"],["participant"])
+    node_data_table["experienced"] = node_data_table["experience"] > 0
+    node_data_table["one"] = 1 
+    participant_n_not_experienced = node_data_table.groupby("participant")["one"].sum() - node_data_table.groupby("participant")["experienced"].sum()
+    participant_n_not_experienced = participant_n_not_experienced.rename("n_not_experienced")
+
+    participant_data = pd.merge(participant_data,participant_n_not_experienced,on="participant")
+    return participant_data
+
 
 def postprocess(src_folder_path,dst_folder_path):
     """
@@ -76,7 +93,7 @@ def postprocess(src_folder_path,dst_folder_path):
     config_params = []
     for participant_folder_name in os.listdir(src_folder_path):
         config = read_yaml(os.path.join(src_folder_path,participant_folder_name,"config.yml"))
-        config = pd.DataFrame(config,index=[0])
+        config = pd.DataFrame(flatten_dict(config),index=[0])
         config_params = config.columns.tolist()
         config["participant_folder_name"] = participant_folder_name
 
@@ -94,9 +111,9 @@ def postprocess(src_folder_path,dst_folder_path):
     # save externally the constant config params
     constant_params = []
     for param_name in config_params:
-        if len(overall_summaries[param_name].unique()) == 1:
+        if len(np.unique(overall_summaries[param_name].dropna(axis=0))) == 1:
             constant_params.append(param_name)
-    constant_config = overall_summaries[constant_params].iloc[0].to_dict()
+    constant_config = pd.DataFrame(overall_summaries)[constant_params].iloc[0].to_dict()
     varying_params = list(set(config_params) - set(constant_params))
     constant_config["varying_params"] = varying_params
     save_yaml(constant_config,os.path.join(dst_folder_path,"constant_config.yml"))

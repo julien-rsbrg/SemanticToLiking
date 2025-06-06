@@ -8,7 +8,7 @@ import torch_geometric.data
 from torch_geometric.data import Data
 
 from abc import ABC, abstractmethod
-from typing import List,Tuple
+from typing import List,Tuple,Callable
 import copy
 
 
@@ -66,7 +66,7 @@ class NodeTransformator(ABC):
         return self.main_name + self.params_repr
 
     def __repr__(self):
-        return self.name() 
+        return self.name
 
     @abstractmethod
     def get_config(self):
@@ -84,7 +84,11 @@ class NodeTransformator(ABC):
 
 
 
-    def fit(self, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
+    def fit(self, 
+            edge_index: np.ndarray, 
+            edge_attr: pd.DataFrame,
+            x: pd.DataFrame,  
+            y: pd.DataFrame | None = None, **kwargs):
         """
         Receive a graph and fit instantiation's attributes for edge selection.
 
@@ -100,7 +104,12 @@ class NodeTransformator(ABC):
         return self
 
 
-    def transform(self, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs) -> tuple[pd.DataFrame,pd.DataFrame|None]:
+    def transform(
+            self, 
+            edge_index: np.ndarray, 
+            edge_attr: pd.DataFrame,
+            x: pd.DataFrame,  
+            y: pd.DataFrame | None = None, **kwargs) -> tuple[pd.DataFrame,pd.DataFrame|None]:
         """Directly returns the best features from what was found during fit and that are present in X.
 
         Parameters
@@ -112,11 +121,13 @@ class NodeTransformator(ABC):
         -------
         """
         self._check_types(x,y)
-        return x, y
+        return edge_index, edge_attr, x, y
 
 
     def fit_transform(
         self, 
+        edge_index: np.ndarray, 
+        edge_attr: pd.DataFrame,
         x: pd.DataFrame,  
         y: pd.DataFrame | None = None, 
         **kwargs
@@ -131,9 +142,9 @@ class NodeTransformator(ABC):
         """
         self._check_types(x,y)
 
-        self.fit(x,y)
-        x, y = self.transform(x,y)
-        return x, y
+        self.fit(edge_index, edge_attr,x,y)
+        edge_index, edge_attr, x, y = self.transform(edge_index, edge_attr,x,y)
+        return edge_index, edge_attr, x, y
 
 
 class SeparatePositiveNegative(NodeTransformator):
@@ -170,13 +181,13 @@ class SeparatePositiveNegative(NodeTransformator):
                 "parameters":{"verbose":self.verbose,
                               "feature_separated":self.feature_separated}}
 
-    def fit(self, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
-        super().fit(x,y)
+    def fit(self, edge_index: np.ndarray, edge_attr: pd.DataFrame, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
+        super().fit(edge_index, edge_attr,x,y)
         self._feature_names_out = self._feature_names_in + [self.feature_separated+"_pos", self.feature_separated+"_neg"]
         return self
 
-    def transform(self, x, y = None, **kwargs):
-        x,y = super().transform(x, y)
+    def transform(self, edge_index: np.ndarray, edge_attr: pd.DataFrame, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
+        edge_index,edge_attr,x,y = super().transform(edge_index, edge_attr,x, y)
 
         def transform_separate_feature(data:pd.DataFrame, feature:str, replace_value:float = 0.0,threshold:float = 0.0):
             new_data = copy.deepcopy(data)
@@ -192,7 +203,7 @@ class SeparatePositiveNegative(NodeTransformator):
         new_x = transform_separate_feature(x, self.feature_separated)
         self._feature_names_out = new_x.columns.tolist()
 
-        return new_x, y
+        return edge_index, edge_attr, new_x, y
     
 
 
@@ -228,15 +239,15 @@ class KeepFeatureNamedSelector(NodeTransformator):
                 "parameters":{"verbose":self.verbose,
                               "feature_names_kept":self.feature_names_kept}}
     
-    def fit(self, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
-        super().fit(x,y)
+    def fit(self, edge_index: np.ndarray, edge_attr: pd.DataFrame, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
+        super().fit(edge_index, edge_attr,x,y)
         self._feature_names_out = self.feature_names_kept
         return self
 
-    def transform(self, x, y = None, **kwargs):
-        new_x,new_y = super().transform(x, y)
+    def transform(self, edge_index: np.ndarray, edge_attr: pd.DataFrame, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
+        edge_index,edge_attr,new_x,new_y = super().transform(edge_index, edge_attr,x, y)
         new_x = x[self.feature_names_kept]
-        return new_x, new_y
+        return edge_index, edge_attr, new_x, new_y
 
 
 class PolynomialFeatureGenerator(NodeTransformator):
@@ -293,11 +304,11 @@ class PolynomialFeatureGenerator(NodeTransformator):
         return config
     
 
-    def fit(self, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs) -> Tuple[pd.DataFrame,pd.DataFrame]:
-        x,y = super().fit(x, y)
+    def fit(self, edge_index: np.ndarray, edge_attr: pd.DataFrame, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs) -> Tuple[pd.DataFrame,pd.DataFrame]:
+        super().fit(edge_index, edge_attr,x, y)
         
         x_involved = x[self.feature_names_involved].copy()
-        self.poly_generator.fit(x=x_involved.to_numpy())
+        self.poly_generator.fit(X=x_involved.to_numpy())
 
         poly_feature_names = self.poly_generator.get_feature_names_out(input_features=self.feature_names_involved)
         mock_new_df = pd.DataFrame(columns=poly_feature_names).drop(self.feature_names_involved, axis = 1)
@@ -306,8 +317,8 @@ class PolynomialFeatureGenerator(NodeTransformator):
 
         return self
 
-    def transform(self, x, y = None, **kwargs):
-        x,y = super().transform(x, y)
+    def transform(self, edge_index: np.ndarray, edge_attr: pd.DataFrame, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
+        edge_index,edge_attr,x,y = super().transform(edge_index, edge_attr,x, y)
 
         x_involved = x[self.feature_names_involved].copy()
         new_x = self.poly_generator.transform(x_involved)
@@ -316,7 +327,7 @@ class PolynomialFeatureGenerator(NodeTransformator):
 
         new_x = x.join(new_x)
 
-        return new_x, y
+        return edge_index, edge_attr, new_x, y
 
 
 
@@ -371,7 +382,7 @@ class EdgeTransformator(ABC):
         return self.main_name + self.params_repr
 
     def __repr__(self):
-        return self.name() 
+        return self.name
     
     @abstractmethod
     def get_config(self):
@@ -380,7 +391,7 @@ class EdgeTransformator(ABC):
 
 
     def __repr__(self):
-        return self.name() 
+        return self.name
 
 
     def _check_types(self, edge_index: np.ndarray, edge_attr: pd.DataFrame | None = None, x: pd.DataFrame | None = None,  y: pd.DataFrame | None = None):
@@ -449,7 +460,7 @@ class EdgeTransformator(ABC):
 
 class KeepGroupSendersToGroupReceivers(EdgeTransformator):
     """
-    Careful wisely name group_senders_mask_fn and group_receivers_mask_fn since the names are used in configuration saving
+    Careful wisely name parameters since the names are used in configuration saving 
     
     
     """
@@ -457,17 +468,27 @@ class KeepGroupSendersToGroupReceivers(EdgeTransformator):
         self,
         group_senders_mask_fn: callable,
         group_receivers_mask_fn: callable,
+        group_senders_thresholding: bool = False,
+        group_receivers_thresholding: bool = False,
+        group_senders_mask_threshold_fn: Callable|None = None,
+        group_receivers_mask_threshold_fn: Callable|None = None,
         verbose: bool = True
     ):
         super().__init__(verbose)
         self.group_senders_mask_fn = group_senders_mask_fn
         self.group_receivers_mask_fn = group_receivers_mask_fn
+
+        self.group_senders_thresholding = group_senders_thresholding
+        self.group_receivers_thresholding = group_receivers_thresholding
+
+        self.group_senders_mask_threshold_fn = group_senders_mask_threshold_fn
+        self.group_receivers_mask_threshold_fn = group_receivers_mask_threshold_fn
     
 
     @property
     def main_name(self) -> str:
         """Main name of the transform function"""
-        return "CutGroupSendersToGroupReceivers"
+        return "KeepGroupSendersToGroupReceivers"
     
     @property
     def params_repr(self) -> str:
@@ -481,10 +502,15 @@ class KeepGroupSendersToGroupReceivers(EdgeTransformator):
     
     def get_config(self):
         """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
-        config = {"name":"CutGroupSendersToGroupReceivers", 
+        config = {"name":"KeepGroupSendersToGroupReceivers", 
                   "parameters":{"verbose":self.verbose,
                                 "group_senders_mask_fn":self.group_senders_mask_fn.__name__,
-                                "group_receivers_mask_fn":self.group_receivers_mask_fn.__name__}
+                                "group_receivers_mask_fn":self.group_receivers_mask_fn.__name__,
+                                "group_senders_thresholding":self.group_senders_thresholding,
+                                "group_receivers_thresholding":self.group_receivers_thresholding,
+                                "group_senders_mask_threshold_fn":self.group_senders_mask_threshold_fn.__name__ if not(self.group_senders_mask_threshold_fn is None) else None,
+                                "group_receivers_mask_threshold_fn":self.group_receivers_mask_threshold_fn.__name__ if not(self.group_receivers_mask_threshold_fn is None) else None
+                                }
         }
         return config
     
@@ -493,10 +519,21 @@ class KeepGroupSendersToGroupReceivers(EdgeTransformator):
                   edge_attr: pd.DataFrame | None = None, 
                   x: pd.DataFrame = None, 
                   y: pd.DataFrame | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
-        super().transform(edge_index, edge_attr, x, y)
-        is_sender_selected = self.group_senders_mask_fn(x)
-        is_receiver_selected = self.group_receivers_mask_fn(x)
+        edge_index, edge_attr, x, y = super().transform(edge_index, edge_attr, x, y)
+
+        if self.group_senders_thresholding:
+            threshold_sender = self.group_senders_mask_threshold_fn(x)
+            is_sender_selected = self.group_senders_mask_fn(x,threshold_sender)
+        else:
+            is_sender_selected = self.group_senders_mask_fn(x)
+
+        if self.group_receivers_thresholding:
+            threshold_receiver = self.group_receivers_mask_threshold_fn(x)
+            is_receiver_selected = self.group_receivers_mask_fn(x,threshold_receiver)
+        else:
+            is_receiver_selected = self.group_receivers_mask_fn(x)
         
+
         if self.verbose:
             print("Number of Edges before transform:", edge_index.shape[1])
                   
@@ -518,6 +555,7 @@ class KeepGroupSendersToGroupReceivers(EdgeTransformator):
             print("Number of Edges after transform:", new_edge_index.shape[1])
 
         return new_edge_index, new_edge_attr, new_x, new_y
+
 
 
 class KeepKNearestNeighbors(EdgeTransformator):
@@ -563,7 +601,7 @@ class KeepKNearestNeighbors(EdgeTransformator):
                   edge_attr: pd.DataFrame | None = None, 
                   x: pd.DataFrame | None = None, 
                   y: pd.DataFrame | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
-        super().transform(edge_index, edge_attr, x, y)
+        edge_index, edge_attr, x, y = super().transform(edge_index, edge_attr, x, y)
 
         if self.verbose:
             print("Number of Edges before transform:", edge_index.shape[1])
@@ -595,7 +633,8 @@ class KeepKNearestNeighbors(EdgeTransformator):
 #### Training samples selection
 
 class MaskSelector(ABC):
-    def __init__(self,**kwargs):
+    def __init__(self,verbose:bool = True,**kwargs):
+        self.verbose = verbose
         pass
 
 
@@ -617,7 +656,7 @@ class MaskSelector(ABC):
         return self.main_name + self.params_repr
     
     def __repr__(self):
-        return self.name() 
+        return self.name
     
     @abstractmethod
     def get_config(self):
@@ -632,8 +671,8 @@ class MaskSelector(ABC):
 
 
 class MaskLowerThanSelector(MaskSelector):
-    def __init__(self, feature_name:str, threshold:float):
-        super().__init__()
+    def __init__(self, feature_name:str, threshold:float, **kwargs):
+        super().__init__(**kwargs)
         self.feature_name = feature_name
         self.threshold = threshold
     
@@ -641,7 +680,7 @@ class MaskLowerThanSelector(MaskSelector):
     @property
     def main_name(self) -> str:
         """Main name of the mask selector"""
-        return "mask"
+        return "mask_"
     
 
     @property
@@ -664,6 +703,56 @@ class MaskLowerThanSelector(MaskSelector):
     def apply(self, x: pd.DataFrame) -> torch.Tensor:
         mask = torch.zeros(len(x),dtype=torch.bool)
         mask[x[self.feature_name]<=0] = True
+        return mask
+
+
+class MaskKeepQuantile(MaskSelector):
+    def __init__(self, feature_name:str, q:float, mode:str = "lower", **kwargs):
+        """
+        Parameters
+        ----------
+        mode : (str)
+        - keep in ["lower", "upper"] takes lower or upper portion of the data
+        
+        """
+        super().__init__(**kwargs)
+        self.feature_name = feature_name
+        self.q = q
+        self.mode = mode
+
+    @property
+    def main_name(self) -> str:
+        """Main name of the mask selector"""
+        return "mask_quantile_"
+    
+
+    @property
+    def params_repr(self) -> str:
+        """Representation of the parameters of the mask selector"""
+        comparator = "<=" if self.mode == "lower" else ">="
+        return f"{self.feature_name}"+comparator+"{self.q}%"
+
+    
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        config = {"name":"MaskKeepQuantile", 
+                  "parameters":{"verbose":self.verbose,
+                                "feature_name":self.feature_name,
+                                "q":self.q,
+                                "mode":self.mode
+                                }
+        }
+        return config
+
+
+    def apply(self, x: pd.DataFrame) -> torch.Tensor:
+        mask = torch.zeros(len(x),dtype=torch.bool)
+        quantile = torch.quantile(torch.Tensor(x[self.feature_name]),self.q)
+        quantile = float(quantile)
+        if self.mode == "lower":
+            mask[x[self.feature_name]<=quantile] = True
+        else:
+            mask[x[self.feature_name]>=quantile] = True
         return mask
 
 
@@ -690,6 +779,9 @@ class ValidationHandler(ABC):
         """Name of the validation handler used for authentificate"""
         return self.main_name + self.params_repr
     
+    def __repr__(self):
+        return self.name
+    
     @abstractmethod
     def get_config(self):
         """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
@@ -715,6 +807,10 @@ class ValidationHandler(ABC):
 
 
 class CrossValidationHandler(ValidationHandler):
+    """
+    If the number of partitions is too large compared to the available data, only one partition is made with an empy validation set 
+    
+    """
     def __init__(self,n_partition:int = 10):
         super().__init__()
         self.n_partition = n_partition
@@ -752,10 +848,17 @@ class CrossValidationHandler(ValidationHandler):
         """
         train_val_sets = []
         poss_val_ids = mask.clone()
+
         n_val_samples_per_partition = int(mask.sum())//self.n_partition
-        while poss_val_ids.sum() > 0:
+        while int(poss_val_ids.sum()) > 0:
             n_val_samples_per_partition = min(n_val_samples_per_partition,int(poss_val_ids.sum()))
-            val_ids = torch.multinomial(poss_val_ids, n_val_samples_per_partition, replacement=False)
+
+            if n_val_samples_per_partition:
+                val_ids = torch.multinomial(poss_val_ids.to(torch.float64), n_val_samples_per_partition, replacement=False)
+                poss_val_ids[val_ids] = False
+            else:
+                val_ids = []
+                poss_val_ids[:] = False
 
             new_train_mask = mask.clone()
             new_train_mask[val_ids] = False
@@ -764,8 +867,6 @@ class CrossValidationHandler(ValidationHandler):
             new_val_mask[val_ids] = True
 
             train_val_sets.append((new_train_mask,new_val_mask))
-
-            poss_val_ids[val_ids] = False
 
         return train_val_sets
         
@@ -812,10 +913,12 @@ class HoldPOutValidationHandler(ValidationHandler):
 
         while poss_val_ids.sum() > 0:
             n_val_samples_per_partition = min(self.p,int(poss_val_ids.sum()))
-            val_ids = torch.multinomial(poss_val_ids, n_val_samples_per_partition, replacement=False)
+            val_ids = torch.multinomial(poss_val_ids.to(torch.float64), n_val_samples_per_partition, replacement=False)
 
-            new_train_mask = mask.clone()
+            new_train_mask = mask.clone().to(torch.bool)
             new_train_mask[val_ids] = False
+            print("mask",mask)
+            print("new_train_mask",new_train_mask)
 
             new_val_mask = torch.zeros(len(mask),dtype=torch.bool)
             new_val_mask[val_ids] = True
@@ -903,6 +1006,13 @@ class PreprocessingPipeline():
                 x=x,
                 y=y
             )
+            # still need to transform for the next transformators that may depend on previous transformations
+            edge_index,edge_attr,x,y = transformator.transform(
+                edge_index=edge_index,
+                edge_attr=edge_attr,
+                x=x,
+                y=y
+            )
         
         return self
 
@@ -915,6 +1025,7 @@ class PreprocessingPipeline():
         for transformator in self.transformators:
             if self.verbose: 
                 print("PreprocessingPipeline transforms data with",transformator)
+                print("x.columns.to_list()",x.columns.to_list())
             
             edge_index,edge_attr,x,y = transformator.transform(
                 edge_index=edge_index,
@@ -963,11 +1074,11 @@ class PreprocessingPipeline():
                                                       y=y)
         
         dataset = []
-        for i in range(train_val_sets):
+        for i in range(len(train_val_sets)):
             data_graph = Data(
                 x = torch.Tensor(x.values), 
                 x_names = x.columns.tolist(),
-                edge_index = torch.Tensor(edge_index),
+                edge_index = torch.Tensor(edge_index).to(torch.int64),
                 edge_attr = torch.Tensor(edge_attr.values) if not (edge_attr is None) else None,
                 edge_attr_names = edge_attr.columns.tolist() if not (edge_attr is None) else None,
                 y = torch.Tensor(y.values), 

@@ -1,0 +1,36 @@
+model:
+  name: SimpleConvModel
+  parameters:
+    aggr: min
+other:
+  model_name: super_model
+preprocessing_pipeline:
+  complete_train_mask_selector:
+    name: MaskKeepQuantile
+    parameters:
+      feature_name: experience
+      mode: lower
+      q: 0.33
+      verbose: true
+  transformators:
+  - name: KeepGroupSendersToGroupReceivers
+    parameters:
+      group_receivers_mask_fn: <lambda>
+      group_receivers_mask_threshold_fn: <lambda>
+      group_receivers_thresholding: true
+      group_senders_mask_fn: <lambda>
+      group_senders_mask_threshold_fn: <lambda>
+      group_senders_thresholding: true
+      verbose: true
+  - name: KeepFeatureNamedSelector
+    parameters:
+      feature_names_kept:
+      - liking
+      verbose: true
+  validation_handler:
+    name: MaskKeepQuantile
+    parameters:
+      feature_name: experience
+      mode: lower
+      q: 0.33
+      verbose: true

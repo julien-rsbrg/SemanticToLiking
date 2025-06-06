@@ -59,6 +59,9 @@ class RandomNormalModel(GenericModel):
             }
         }
         return config
+    
+    def get_dict_params(self):
+        return {}
 
 
 class SimpleConvModel(GenericModel):
@@ -82,6 +85,9 @@ class SimpleConvModel(GenericModel):
         
         Parameters
         ----------
+        dst_path : str
+            Path to save the model. No extension.
+        
         dst_path : str
             Path to save the model. No extension.
         """
@@ -108,3 +114,6 @@ class SimpleConvModel(GenericModel):
             }
         }
         return config
+    
+    def get_dict_params(self):
+        return {}

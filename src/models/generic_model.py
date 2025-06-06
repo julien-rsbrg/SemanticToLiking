@@ -1,6 +1,12 @@
 import collections.abc
 from abc import ABC, abstractmethod
 
+import os
+import pandas as pd
+
+from src.utils import flatten_dict, ensure_one_dim_dict
+
+
 class FilterKwargs():
     def __init__(self,kept_keywords):
         self.kept_keywords = kept_keywords
@@ -81,7 +87,20 @@ class GenericModel(ABC):
         """
         pass
     
-    
+
+    def save_parameters(self,dst_path):
+        """save the model's parameters under a .csv format
+        
+        Parameters
+        ----------
+        dst_path : str
+            Path to save the model's parameters. No extension.
+        """
+        dict_params = flatten_dict(self.get_dict_params())
+        dict_params = ensure_one_dim_dict(dict_params)
+        pd.DataFrame(dict_params).to_csv(dst_path + ".csv")
+
+
     @abstractmethod
     def reset_parameters(self):
         """reset parameters of the model"""
@@ -91,6 +110,11 @@ class GenericModel(ABC):
     @abstractmethod
     def get_config(self):
         """get configuration for the model"""
+        pass
+
+    @abstractmethod
+    def get_dict_params(self):
+        """get a dictionary of the model's parameters"""
         pass
 
 

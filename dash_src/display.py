@@ -194,7 +194,8 @@ def create_pairplot(
         y_var:str,
         mask_treatment:np.ndarray|None=None,
         group_by:str|None = None,
-        title:str="")->go.Figure:
+        title:str="",
+        show_legend:bool=True)->go.Figure:
     """
     Create a plotly pairplot
 
@@ -290,7 +291,8 @@ def create_pairplot(
         title=title,
         xaxis_title=x_var,
         yaxis_title=y_var,
-        clickmode='event+select'
+        clickmode='event+select',
+        showlegend=show_legend
     )
     
     return fig
@@ -441,7 +443,8 @@ def create_violin_distrib(
         var_y: str, 
         mask_treatment: np.ndarray|None = None, 
         group_by: str|None = None,
-        title: str = ""):
+        title: str = "",
+        show_legend: bool = True):
     fig = go.Figure()
 
     if mask_treatment is None:
@@ -530,7 +533,8 @@ def create_violin_distrib(
         title = title,
         violinmode='group',
         xaxis_title=var_x,
-        yaxis_title=var_y)
+        yaxis_title=var_y,
+        showlegend=show_legend)
     return fig
 
 def create_simple_histo(df:pd.DataFrame,var_name:str,nbinsx:int=20,fig:go.Figure|None=None):
@@ -589,11 +593,12 @@ def create_grouped_scatter_plot_matrix(data:pd.DataFrame,var:str,join_on:str,gro
     joined_data = None
     for v in  data[group_by].unique():
         data_sample = data[data[group_by] == v]
+        print(f"data_sample v={v}\n",data_sample)
         data_sample = data_sample.rename(columns={var:var+":"+str(v)})
         if joined_data is None:
             joined_data = data_sample
         else:
-            joined_data = pd.merge(joined_data,data_sample,on=join_on,how="outer")
+            joined_data = pd.merge(joined_data,data_sample[[join_on, var+":"+str(v)]],on=join_on,how="outer")
 
     joined_data = joined_data[[join_on]+[var+":"+str(v) for v in data[group_by].unique()]]
 
@@ -626,7 +631,7 @@ def create_grouped_heatmap(data:pd.DataFrame,var:str,fn:str,join_on:str,group_by
         if joined_data is None:
             joined_data = data_sample
         else:
-            joined_data = pd.merge(joined_data,data_sample,on=join_on,how="outer")
+            joined_data = pd.merge(joined_data,data_sample[[join_on, var+":"+str(v)]],on=join_on,how="outer")
 
     joined_data = joined_data[[join_on]+[var+":"+str(v) for v in possible_group_values]]
     
@@ -683,6 +688,9 @@ def create_grouped_heatmap(data:pd.DataFrame,var:str,fn:str,join_on:str,group_by
                     new_row_p.append(np.nan)
             z.append(new_row)
             p_values.append(new_row_p)
+    
+    elif fn == "coefficient of determination y w.r.t. x":
+        pass # need true values
     else:
         raise NotImplementedError(f"Function {fn} is unknown")
 

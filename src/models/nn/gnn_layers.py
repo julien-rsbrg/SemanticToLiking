@@ -146,7 +146,7 @@ class MyGATConv(torch_geometric.nn.GATConv):
                                           weight_initializer=src_content_weight_initializer)
             self.lin_dst_content = myLinear(dst_content_in_channels, heads * out_channels, bias=False,
                                           weight_initializer=dst_content_weight_initializer)
-        
+
         self.lin_src_content.set_requires_grad(src_content_require_grad)
         self.lin_dst_content.set_requires_grad(dst_content_require_grad) 
         self.lin_src_edge.set_requires_grad(src_edge_require_grad) 
@@ -159,6 +159,19 @@ class MyGATConv(torch_geometric.nn.GATConv):
             self.att_edge.requires_grad = False
 
         self.reset_parameters()
+
+
+
+        self.src_content_require_grad = src_content_require_grad
+        self.dst_content_require_grad = dst_content_require_grad
+        self.src_edge_require_grad = src_edge_require_grad
+        self.dst_edge_require_grad = dst_edge_require_grad
+
+        self.src_content_weight_initializer = src_content_weight_initializer
+        self.src_edge_weight_initializer = src_edge_weight_initializer
+        self.dst_content_weight_initializer = dst_content_weight_initializer
+        self.dst_edge_weight_initializer = dst_edge_weight_initializer
+        self.edge_weight_initializer = edge_weight_initializer
     
     def reset_parameters(self):
         super().reset_parameters()
@@ -303,7 +316,7 @@ class MyGATConv(torch_geometric.nn.GATConv):
             return out
         
     
-    def get_description_parameters(self):
+    def get_dict_parameters(self):
         def get_description_tensor(tensor_to_describe,tensor_name:str):
             if tensor_to_describe is None:
                 param_id = 0
@@ -400,7 +413,7 @@ class MyGATConv(torch_geometric.nn.GATConv):
 
     def get_config(self):
         config = {
-            "name":MyGATConv,
+            "name":"MyGATConv",
             "parameters":{
                 "in_channels": self.in_channels,
                 "out_channels": self.out_channels,
@@ -411,14 +424,14 @@ class MyGATConv(torch_geometric.nn.GATConv):
                 "add_self_loops": self.add_self_loops,
                 "edge_dim": self.edge_dim,
                 "fill_value": self.fill_value,
-                "bias": self.bias,
+                "bias": not(self.bias is None),
                 "src_content_mask": self.src_content_mask,
                 "src_edge_mask": self.src_edge_mask,
                 "dst_content_mask": self.dst_content_mask,
                 "dst_edge_mask": self.dst_edge_mask,
                 "src_content_require_grad": self.src_content_require_grad,
                 "src_edge_require_grad": self.src_edge_require_grad,
-                "dst_content_require_grad": self.dst_require_grad,
+                "dst_content_require_grad": self.dst_content_require_grad,
                 "dst_edge_require_grad": self.dst_edge_require_grad,
                 "src_content_weight_initializer": self.src_content_weight_initializer,
                 "src_edge_weight_initializer": self.src_edge_weight_initializer,
@@ -567,7 +580,7 @@ class MyBGATConv(MyGATConv,VIModule):
                 device = self.device)
             
     
-    def get_description_parameters(self):
+    def get_dict_parameters(self):
         def get_description_tensor(tensor_to_describe,tensor_name:str):
             if tensor_to_describe is None:
                 param_id = 0

@@ -10,6 +10,7 @@ import dash_src.utils as utils
 
 from dash_src.configs.main import config
 from src.utils import read_yaml
+import src.data_handler as src_data_handler
 
 def load_configs(result_folder_path:str)->pd.DataFrame:
     """
@@ -37,17 +38,25 @@ def load_configs(result_folder_path:str)->pd.DataFrame:
 
 
 
-def load_data(processed_path:str):
+def load_data(exp_path:str,participant_data_path:str):
     id_to_models_info = {}
-    for i, study_name in enumerate(os.listdir(processed_path)):
-        constant_config = read_yaml(os.path.join(processed_path,study_name, "constant_config.yml"))
+    for i, study_name in enumerate(os.listdir(exp_path)):
+        constant_config = read_yaml(os.path.join(exp_path,study_name,"processed","constant_config.yml"))          
         
+        note_path = os.path.join(exp_path,study_name,"processed","note.txt")
+        if os.path.exists(note_path):
+            f = open(note_path)
+            note = f.read()
+        else:
+            note = ""
+
         id_to_models_info[i] = {}
-        id_to_models_info[i]["model_name"] = constant_config["model_name"]
+        id_to_models_info[i]["model_name"] = constant_config["other.model_name"]
+        id_to_models_info[i]["note"] = note
         id_to_models_info[i]["constant_config"] = constant_config
         id_to_models_info[i]["study_name"] = study_name
 
-    assert len(id_to_models_info), f"No study stored in {processed_path}"
+    assert len(id_to_models_info), f"No study stored in {exp_path}"
 
     # ensure different model names
     for i in range(len(id_to_models_info)):
@@ -63,13 +72,19 @@ def load_data(processed_path:str):
     # load
 
     all_studies_summaries = []
-    for i,study_name in enumerate(os.listdir(os.path.join(processed_path))):
-        study_overall_summaries = pd.read_csv(os.path.join(processed_path,study_name,"overall_summaries.csv"),index_col = 0)
+    for i,study_name in enumerate(os.listdir(os.path.join(exp_path))):
+        study_overall_summaries = pd.read_csv(os.path.join(exp_path,study_name,"processed","overall_summaries.csv"),index_col = 0)
         study_overall_summaries["model_id"] = id_to_models_info[i]["model_id"]
 
         all_studies_summaries.append(study_overall_summaries) 
 
     all_studies_summaries = pd.concat(all_studies_summaries,axis=0)
     all_studies_summaries.reset_index(inplace=True,drop=True)
+
+    # get participant data
+    all_studies_summaries["participant"] = all_studies_summaries["participant_folder_name"].apply(lambda x: int(x.split("_")[-1]))
+    
+    participant_data = pd.read_csv(participant_data_path,index_col=0)
+    all_studies_summaries = pd.merge(all_studies_summaries,participant_data,how="left",on="participant")
     
     return id_to_models_info, all_studies_summaries

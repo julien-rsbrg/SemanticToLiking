@@ -14,7 +14,7 @@ from torch_geometric.data import Data
 from src.models.nn.nn_layers import MLPModel
 from src.models.nn.gnn_layers import MyBGATConv
 from src.models.nn.ML_frameworks import BGNNFramework
-import src.loading as loading
+import src.data_handler as data_handler
 import src.processing.raw_data_cleaning as raw_data_cleaning
 
 from src.visualization.analyse_model import plot_errors_labels_comparison, get_prediction_table
@@ -69,7 +69,7 @@ def prepare_graph_for_participant(data:pd.DataFrame, participant_id:any, sim_use
 
 def run(sim_used:str = "original", dst_file_path:str|None = None):
     ## Data
-    data = loading.load_data()
+    data = data_handler.load_data()
 
     def nor_function(a,b):
         return (a or b) and not(a and b)

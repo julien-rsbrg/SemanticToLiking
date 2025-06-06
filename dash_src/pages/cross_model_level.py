@@ -14,19 +14,17 @@ import dash_src.data_load as data_load
 
 from dash_src.configs.main import config
 
-from src.utils import read_yaml
-
 register_page(__name__, path="/")
 
 ## Data
 
-CONFIG = {
-    "src_results_path":"src/data_generation/examples",
-}
-RAW_PATH = os.path.join(CONFIG["src_results_path"],"raw")
-PROCESSED_PATH = os.path.join(CONFIG["src_results_path"],"processed")
 
-id_to_models_info, all_studies_summaries = data_load.load_data(processed_path=PROCESSED_PATH)
+CONFIG = {
+    "src_results_path":"experiments_results/3-fold_cross_validation",
+    "participant_data_path":os.path.join("data/processed","participant_data.csv")
+}
+
+id_to_models_info, all_studies_summaries = data_load.load_data(exp_path=CONFIG["src_results_path"], participant_data_path=CONFIG["participant_data_path"])
 
 
 
@@ -51,7 +49,7 @@ layout = html.Div(
             multi=False
         ),
         html.H5("Model information:"),
-        dcc.Markdown("...model info...",id="cross_model_info_report",style={"width":"80%"}),
+        dcc.Markdown("...model info...",id="cross_model_info_report",mathjax=True, style={"width":"80%"}),
 
         html.H4("Choose the models for comparison"),
         html.Label("(beware of the order: it will be used for the plots)"),
@@ -119,6 +117,7 @@ layout = html.Div(
                 ], style={'width': '45%', 'display': 'inline-block'}),
                 dcc.RadioItems(['mix', 'use constraints'], 'mix', id="cross_model_scatter_0_constraints",inline=True),
                 dcc.RadioItems(['mix', 'group by model'], 'mix', id="cross_model_scatter_0_model_group",inline=True),
+                dcc.RadioItems(['show legend', 'hide legend'], 'show legend', id="cross_model_scatter_0_legend",inline=True),
                 dcc.Graph(id="cross_model_scatter_0"),
             ],style={'width': '45%', 'display': 'inline-block'}),
             html.Div([
@@ -140,6 +139,7 @@ layout = html.Div(
                 ], style={'width': '45%', 'display': 'inline-block'}),
                 dcc.RadioItems(['mix', 'use constraints'], 'mix', id="cross_model_scatter_1_constraints",inline=True),
                 dcc.RadioItems(['mix', 'group by model'], 'mix', id="cross_model_scatter_1_model_group",inline=True),
+                dcc.RadioItems(['show legend', 'hide legend'], 'show legend', id="cross_model_scatter_1_legend",inline=True),
                 dcc.Graph(id="cross_model_scatter_1"),
             ],style={'width': '45%', 'display': 'inline-block'}),
             ]
@@ -169,6 +169,7 @@ layout = html.Div(
                 ], style={'width': '45%', 'display': 'inline-block'}),
                 dcc.RadioItems(['mix', 'use constraints'], 'mix', id="cross_model_distrib_0_constraints",inline=True),
                 dcc.RadioItems(['bar plot', 'violin plot'], 'bar plot', id="cross_model_distrib_0_bar_or_violin",inline=True),
+                dcc.RadioItems(['show legend', 'hide legend'], 'show legend', id="cross_model_distrib_0_legend",inline=True),
                 dcc.Graph(id="cross_model_distrib_0")
             ], style={'width': '45%', 'display': 'inline-block'}),
             html.Div([
@@ -190,6 +191,7 @@ layout = html.Div(
                 ], style={'width': '45%', 'display': 'inline-block'}),
                 dcc.RadioItems(['mix', 'use constraints'], 'mix', id="cross_model_distrib_1_constraints",inline=True),
                 dcc.RadioItems(['bar plot', 'violin plot'], 'bar plot', id="cross_model_distrib_1_bar_or_violin",inline=True),
+                dcc.RadioItems(['show legend', 'hide legend'], 'show legend', id="cross_model_distrib_1_legend",inline=True),
                 dcc.Graph(id="cross_model_distrib_1")
             ], style={'width': '45%', 'display': 'inline-block'}),
         ]),
@@ -243,11 +245,17 @@ layout = html.Div(
     Output("cross_model_info_report","children"),
     Input("cross_model_info_selected","value")
 )
-def give_model_info(model_name):
-    for i in id_to_models_info.keys():
-        if model_name == id_to_models_info[i]["model_id"]:
-            text = ""
-            for k,v in id_to_models_info[i]["constant_config"].items():
+def give_model_info(model_id, model_id_to_models_info = id_to_models_info):
+    for i in model_id_to_models_info.keys():
+        if model_id == model_id_to_models_info[i]["model_id"]:
+            text = "**Note on the model:**\n\n"
+            text += model_id_to_models_info[i]["note"].replace("\n","\n\n")
+            print(model_id_to_models_info[i]["note"])
+            text += "\n\n"
+            text += "----\n\n"
+            text += "**Model configuration:**\n\n"
+
+            for k,v in model_id_to_models_info[i]["constant_config"].items():
                 text += str(k) + ": "
                 if isinstance(v,list):
                     text += "\n"
@@ -278,7 +286,7 @@ def update_cross_model_mask_treatment(restyle_data,fig_parcoords,data=all_studie
     Input("cross_model_store_mask_treatment","data"),
     Input("models_comparison_selected","value")
 )
-def update_cross_model_only_histo(color_var_name,mask_treatment,groups_kept,group_by="model_name",data=all_studies_summaries):
+def update_cross_model_only_histo(color_var_name,mask_treatment,groups_kept,group_by="model_id",data=all_studies_summaries):
     data, mask_treatment = utils.restrict_data(data,group_by,groups_kept,np.array(mask_treatment))
     return display.create_parcoords_only_histo(data,color_var_name,mask_treatment)
 
@@ -289,7 +297,7 @@ def update_cross_model_only_histo(color_var_name,mask_treatment,groups_kept,grou
     Input("cross_model_parcoords_color","value"),
     Input("models_comparison_selected","value")
 )
-def update_cross_model_parcoords(vars_name,color_var_name,groups_kept,group_by="model_name",data=all_studies_summaries):
+def update_cross_model_parcoords(vars_name,color_var_name,groups_kept,group_by="model_id",data=all_studies_summaries):
     data, _ = utils.restrict_data(data,group_by,groups_kept,np.ones(len(data),dtype=bool))
     return display.create_parcoords(data,vars=vars_name,color_var=color_var_name)
 
@@ -302,18 +310,20 @@ def update_cross_model_parcoords(vars_name,color_var_name,groups_kept,group_by="
     Input("cross_model_scatter_0_var_x","value"),
     Input("cross_model_scatter_0_var_y","value"),
     Input("cross_model_scatter_0_constraints","value"),
+    Input("cross_model_scatter_0_legend","value"),
     Input("cross_model_store_mask_treatment","data"),
     Input("cross_model_scatter_0_model_group","value"),
     Input("models_comparison_selected","value")
 )
-def update_cross_model_scatter_0(xaxis_var_name,yaxis_var_name,constraints,mask_treatment,group,groups_kept,group_by="model_id",data=all_studies_summaries):
+def update_cross_model_scatter_0(xaxis_var_name,yaxis_var_name,constraints,show_legend,mask_treatment,group,groups_kept,group_by="model_id",data=all_studies_summaries):
     data, mask_treatment = utils.restrict_data(data,group_by,groups_kept,np.array(mask_treatment))
     return display.create_pairplot(
         data,
         xaxis_var_name,
         yaxis_var_name,
         mask_treatment = None if constraints != "use constraints" else mask_treatment,
-        group_by = None if group != "group by model" else group_by)
+        group_by = None if group != "group by model" else group_by,
+        show_legend=(show_legend == "show legend"))
 
 
 @callback(
@@ -321,18 +331,21 @@ def update_cross_model_scatter_0(xaxis_var_name,yaxis_var_name,constraints,mask_
     Input("cross_model_scatter_1_var_x","value"),
     Input("cross_model_scatter_1_var_y","value"),
     Input("cross_model_scatter_1_constraints","value"),
+    Input("cross_model_scatter_1_legend","value"),
     Input("cross_model_store_mask_treatment","data"),
     Input("cross_model_scatter_1_model_group","value"),
     Input("models_comparison_selected","value")
 )
-def update_cross_model_scatter_1(xaxis_var_name,yaxis_var_name,constraints,mask_treatment,group,groups_kept,group_by="model_id",data=all_studies_summaries):
+def update_cross_model_scatter_1(xaxis_var_name,yaxis_var_name,constraints,show_legend,mask_treatment,group,groups_kept,group_by="model_id",data=all_studies_summaries):
     data, mask_treatment = utils.restrict_data(data,group_by,groups_kept,np.array(mask_treatment))
     return display.create_pairplot(
         data,
         xaxis_var_name,
         yaxis_var_name,
         mask_treatment = None if constraints != "use constraints" else mask_treatment,
-        group_by = None if group != "group by model" else group_by)
+        group_by = None if group != "group by model" else group_by,
+        show_legend=(show_legend == "show legend"))
+
 
 
 # distributions
@@ -343,10 +356,11 @@ def update_cross_model_scatter_1(xaxis_var_name,yaxis_var_name,constraints,mask_
     Input("cross_model_distrib_0_var_y","value"),
     Input("cross_model_distrib_0_constraints","value"),
     Input("cross_model_distrib_0_bar_or_violin","value"),
+    Input("cross_model_distrib_0_legend","value"),
     Input("cross_model_store_mask_treatment","data"),
     Input("models_comparison_selected","value")
 )
-def update_cross_model_distrib_0(var_x,var_y,constraints,bar_or_violin,mask_treatment,groups_kept,group_by="model_id",data=all_studies_summaries):    
+def update_cross_model_distrib_0(var_x,var_y,constraints,bar_or_violin,show_legend,mask_treatment,groups_kept,group_by="model_id",data=all_studies_summaries):    
     data, mask_treatment = utils.restrict_data(data,group_by,groups_kept,np.array(mask_treatment))
     if bar_or_violin == "violin plot":
         return display.create_violin_distrib(
@@ -355,7 +369,8 @@ def update_cross_model_distrib_0(var_x,var_y,constraints,bar_or_violin,mask_trea
             var_y=var_y, 
             mask_treatment = None if constraints != "use constraints" else mask_treatment, 
             group_by = group_by,
-            title = "")
+            title = "",
+            show_legend = (show_legend == "show legend"))
     else:
         return go.Figure()
 
@@ -366,10 +381,11 @@ def update_cross_model_distrib_0(var_x,var_y,constraints,bar_or_violin,mask_trea
     Input("cross_model_distrib_1_var_y","value"),
     Input("cross_model_distrib_1_constraints","value"),
     Input("cross_model_distrib_1_bar_or_violin","value"),
+    Input("cross_model_distrib_1_legend","value"),
     Input("cross_model_store_mask_treatment","data"),
     Input("models_comparison_selected","value")
 )
-def update_cross_model_distrib_1(var_x,var_y,constraints,bar_or_violin,mask_treatment,groups_kept,group_by="model_id",data=all_studies_summaries):    
+def update_cross_model_distrib_1(var_x,var_y,constraints,bar_or_violin,show_legend,mask_treatment,groups_kept,group_by="model_id",data=all_studies_summaries):    
     data, mask_treatment = utils.restrict_data(data,group_by,groups_kept,np.array(mask_treatment))
     if bar_or_violin == "violin plot":
         return display.create_violin_distrib(
@@ -378,7 +394,8 @@ def update_cross_model_distrib_1(var_x,var_y,constraints,bar_or_violin,mask_trea
             var_y=var_y, 
             mask_treatment = None if constraints != "use constraints" else mask_treatment, 
             group_by = group_by,
-            title = "")
+            title = "",
+            show_legend = (show_legend == "show legend"))
     else:
         return go.Figure()
 

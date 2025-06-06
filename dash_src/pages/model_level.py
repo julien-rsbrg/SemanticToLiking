@@ -18,25 +18,17 @@ register_page(__name__, path='/model_level')
 
 ## Data
 
-## Data
 
 CONFIG = {
-    "src_results_path":"src/data_generation/examples",
+    "src_results_path":"experiments_results/3-fold_cross_validation",
+    "participant_data_path":os.path.join("data/processed","participant_data.csv")
 }
-RAW_PATH = os.path.join(CONFIG["src_results_path"],"raw")
-PROCESSED_PATH = os.path.join(CONFIG["src_results_path"],"processed")
 
-id_to_models_info, all_studies_summaries = data_load.load_data(processed_path=PROCESSED_PATH)
+id_to_models_info, all_studies_summaries = data_load.load_data(exp_path=CONFIG["src_results_path"], participant_data_path=CONFIG["participant_data_path"])
+
+
 
 ################################################################################################
-
-cross_exp_aggregated_results = pd.DataFrame({"a":[1,2,3],"b":[5,3,2]})
-participants_data = pd.DataFrame({"ID":[1,2],"depression_score":[1,5]})
-model_to_participant_results = {
-    "bayesian_NN":pd.DataFrame({"ID":[1,2],"MAE":[0.2,0.15]}),
-    "3NN":pd.DataFrame({"ID":[1,2],"MAE":[0.3,0.2]}),
-    "bayesian_GNN":pd.DataFrame({"ID":[1,2],"MAE":[0.21,0.19]})
-}
 
 ## Layout
 
@@ -178,9 +170,9 @@ layout = html.Div(
     Input("model_selected","value"),
 
 )
-def give_model_info(model_name):
+def give_model_info(model_id):
     for i in id_to_models_info.keys():
-        if model_name == id_to_models_info[i]["model_id"]:
+        if model_id == id_to_models_info[i]["model_id"]:
             text = ""
             for k,v in id_to_models_info[i]["constant_config"].items():
                 text += str(k) + ": "
@@ -201,7 +193,7 @@ def give_model_info(model_name):
     Output("model_store_numeric_vars","data"),
     Input("model_selected","value")
 )
-def update_model_store_vars(model_selected, group_by="model_name", data=all_studies_summaries):
+def update_model_store_vars(model_selected, group_by="model_id", data=all_studies_summaries):
     data, _ = utils.restrict_data(data,group_by,groups_kept=[model_selected],mask_treatment=np.ones(len(data),dtype=bool))
     mask_not_empty = (~data.isna()).sum(axis=0) > 0
     kept_vars = data.columns.to_numpy()[mask_not_empty]
@@ -303,7 +295,7 @@ def update_model_mask_treatment(restyle_data,fig_parcoords,data=all_studies_summ
     Input("model_store_mask_treatment","data"),
     Input("model_selected","value")
 )
-def update_model_only_histo(color_var_name,mask_treatment,model_selected,group_by="model_name",data=all_studies_summaries):
+def update_model_only_histo(color_var_name,mask_treatment,model_selected,group_by="model_id",data=all_studies_summaries):
     data, mask_treatment = utils.restrict_data(data,group_by,groups_kept=[model_selected],mask_treatment=np.array(mask_treatment))
     return display.create_parcoords_only_histo(data,color_var_name,mask_treatment)
 
@@ -314,7 +306,7 @@ def update_model_only_histo(color_var_name,mask_treatment,model_selected,group_b
     Input("model_parcoords_color","value"),
     Input("model_selected","value")
 )
-def update_model_parcoords(vars_name,color_var_name,model_selected,group_by="model_name",data=all_studies_summaries):
+def update_model_parcoords(vars_name,color_var_name,model_selected,group_by="model_id",data=all_studies_summaries):
     data, _ = utils.restrict_data(data,group_by,groups_kept=[model_selected],mask_treatment=np.ones(len(data),dtype=bool))
     return display.create_parcoords(data,vars=vars_name,color_var=color_var_name)
 
@@ -326,7 +318,7 @@ def update_model_parcoords(vars_name,color_var_name,model_selected,group_by="mod
     Input("model_store_mask_treatment","data"),
     Input("model_selected","value")
 )
-def update_pairplot(var_names,color_var_name,mask_treatment,model_selected,group_by="model_name",data=all_studies_summaries):
+def update_pairplot(var_names,color_var_name,mask_treatment,model_selected,group_by="model_id",data=all_studies_summaries):
     data, mask_treatment = utils.restrict_data(data,group_by,groups_kept=[model_selected],mask_treatment=np.array(mask_treatment))
     data = data[mask_treatment]
     return display.plot_pairplot_matrix(
@@ -344,7 +336,7 @@ def update_pairplot(var_names,color_var_name,mask_treatment,model_selected,group
     Input("model_store_mask_treatment","data"),
     Input("model_selected","value")
 )
-def update_model_scatter_0(x_var,y_var,constraints,mask_treatment,model_selected,group_by="model_name",data=all_studies_summaries):
+def update_model_scatter_0(x_var,y_var,constraints,mask_treatment,model_selected,group_by="model_id",data=all_studies_summaries):
     data, mask_treatment = utils.restrict_data(data,group_by,groups_kept=[model_selected],mask_treatment=np.array(mask_treatment))
     return display.create_pairplot(
         df = data, 
@@ -363,7 +355,7 @@ def update_model_scatter_0(x_var,y_var,constraints,mask_treatment,model_selected
     Input("model_store_mask_treatment","data"),
     Input("model_selected","value")
 )
-def update_model_scatter_1(x_var,y_var,constraints,mask_treatment,model_selected,group_by="model_name",data=all_studies_summaries):
+def update_model_scatter_1(x_var,y_var,constraints,mask_treatment,model_selected,group_by="model_id",data=all_studies_summaries):
     data, mask_treatment = utils.restrict_data(data,group_by,groups_kept=[model_selected],mask_treatment=np.array(mask_treatment))
     return display.create_pairplot(
         df = data, 
@@ -383,7 +375,7 @@ def update_model_scatter_1(x_var,y_var,constraints,mask_treatment,model_selected
     State("model_selected","value"),
     prevent_initial_call=True
 )
-def run_inference(n_clicks,constraints,formula,mask_treatment,model_selected,group_by="model_name",data=all_studies_summaries):
+def run_inference(n_clicks,constraints,formula,mask_treatment,model_selected,group_by="model_id",data=all_studies_summaries):
     if formula is None or formula == "":
         return ""
 

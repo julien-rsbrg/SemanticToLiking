@@ -33,18 +33,19 @@ def recursive_mkdirs(folder_path:str)->None:
     
 
 def restrict_data(data:pd.DataFrame,group_by,groups_kept,mask_treatment):
-  mask_groups_kept = data[group_by].isin(groups_kept)
-  data = data[mask_groups_kept]
-  data.reset_index(inplace=True,drop=True)
-  data = data.loc[pd.Series(pd.Categorical(data[group_by],
-                                           categories=groups_kept, 
-                                           ordered=True)
-                                           ).sort_values().index
-                                           ]
-  #print("mask_groups_kept",mask_groups_kept)
-  #print("mask_treatment",mask_treatment)
-  mask_treatment = mask_treatment[mask_groups_kept.to_numpy()] 
-  return data, mask_treatment
+  _data = data.copy()
+  mask_groups_kept = _data[group_by].isin(groups_kept)
+  _data["_mask_treatment"] = mask_treatment
+  _data = _data[mask_groups_kept]
+  _data.reset_index(inplace=True,drop=True)
+  _data = _data.loc[pd.Series(pd.Categorical(_data[group_by],
+                                             categories=groups_kept, 
+                                             ordered=True)
+                                             ).sort_values().index
+                                             ]
+  mask_treatment = _data["_mask_treatment"].values 
+  _data = _data.drop("_mask_treatment",axis=1)
+  return _data, mask_treatment
 
 
 
@@ -88,6 +89,7 @@ def get_parcoords_dict_dim(df:pd.DataFrame,column_name:str,remove_prefix_length:
                    label=column_name[remove_prefix_length:], values=df['dummy'])
     else:
         if range is None:
+          print("df[column_name]\n",df[column_name])
           _range = [df[column_name].min(),df[column_name].max()]
         else:
           _range = range

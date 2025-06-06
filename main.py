@@ -6,7 +6,7 @@ import torch_geometric
 from src.models.nn.nn_layers import MLPModel
 from src.models.nn.gnn_layers import myGATConv
 from src.models.nn.ML_frameworks import GNN_naive_framework
-import src.loading as loading
+import src.data_handler as data_handler
 import src.preprocessing.processing as processing
 
 from visualization.analyse_model import plot_errors_labels_comparison
@@ -16,7 +16,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ## Data
 
 
-data = loading.load_data()
+data = data_handler.load_data()
 
 def nor_function(a,b):
     return (a or b) and not(a and b)
