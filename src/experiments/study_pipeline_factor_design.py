@@ -10,7 +10,7 @@ import torch
 import src.data_handler as data_handler
 
 from src.processing.raw_data_cleaning import prepare_graph_for_participant
-from src.processing.preprocessing import PreprocessingPipeline, KeepFeatureNamedSelector, KeepGroupSendersToGroupReceivers, KeepKNearestNeighbors, PolynomialFeatureGenerator, MaskLowerThanSelector, CrossValidationHandler,HoldPOutValidationHandler, SeparatePositiveNegative
+from src.processing.preprocessing import PreprocessingPipeline, KeepFeaturesSelector, FilterGroupSendersToGroupReceivers, KeepKNearestNeighbors, PolynomialFeatureGenerator, MaskLowerThanSelector, CrossValidationHandler,HoldPOutValidationHandler, SeparatePositiveNegative
 from src.models.model_pipeline import ModelPipeline
 from src.models.baseline_models import SimpleConvModel
 from src.models.nn.gnn_layers import MyGATConv
@@ -24,15 +24,16 @@ factor_to_levels = {
     # check whether the intercept is necessary in the model
     "attention_liking":[False,True],
     # check whether the individual has biased attention based on the liking of the activity
-    "amplification_liking":[False],
+    "amplification_liking":[False,True],
     # check whether the individual amplifies the liking when generalizing (indipendently from attention)
-    "dissociate_liking_pos_neg":[False],
+    "dissociate_liking_pos_neg":[False,True],
     # check whether the individual has a different generalization process depending on the liking of the activity
     "2d_polynomial_liking":[False]
     # allows nonlinear processes (degree 2 only for the liking parameters)
 }
 
 poss_combinations = list(itertools.product(*factor_to_levels.values()))
+poss_combinations = list(set(poss_combinations) - {(1.0, False, False, False, False, False),(1.0, False, True, False, False, False)})
 
 if __name__ == "__main__":
     data = data_handler.load_data()
@@ -62,7 +63,7 @@ if __name__ == "__main__":
                                                                 participant_id=participant_id, 
                                                                 sim_used=supplementary_config["sim_used"])
 
-            transformators = [KeepGroupSendersToGroupReceivers(
+            transformators = [FilterGroupSendersToGroupReceivers(
                 group_senders_mask_fn= lambda x: x["experience"] > 0,
                 group_receivers_mask_fn= lambda x: x["experience"] <= 0,
                 )]
@@ -70,23 +71,23 @@ if __name__ == "__main__":
                 transformators += [SeparatePositiveNegative(True,"liking")]
                 if liking2d:
                     transformators += [PolynomialFeatureGenerator(verbose=True,feature_names_involved=["liking_pos"]),
-                                       KeepFeatureNamedSelector(verbose=True,feature_names_kept=["liking_pos","liking_neg","liking_pos^2"])]
+                                       KeepFeaturesSelector(verbose=True,feature_names_kept=["liking_pos","liking_neg","liking_pos^2"])]
                     dim_in = 3
                 else:
-                    transformators += [KeepFeatureNamedSelector(verbose=True,feature_names_kept=["liking_pos","liking_neg"])]
+                    transformators += [KeepFeaturesSelector(verbose=True,feature_names_kept=["liking_pos","liking_neg"])]
                     dim_in = 2
             else:
                 if liking2d:
                     transformators += [PolynomialFeatureGenerator(verbose=True,feature_names_involved=["liking"]),
-                                       KeepFeatureNamedSelector(verbose=True,feature_names_kept=["liking","liking^2"])]
+                                       KeepFeaturesSelector(verbose=True,feature_names_kept=["liking","liking^2"])]
                     dim_in = 2
                 else:
-                    transformators += [KeepFeatureNamedSelector(verbose=True,feature_names_kept=["liking"])]  
+                    transformators += [KeepFeaturesSelector(verbose=True,feature_names_kept=["liking"])]  
                     dim_in = 1
             
             preprocessing_pipeline = PreprocessingPipeline(
                 transformators=transformators,
-                complete_train_mask_selector=MaskLowerThanSelector(feature_name="experience",threshold=0), # WARNING keep the same threshold as in KeepGroupSendersToGroupReceivers
+                complete_train_mask_selector=MaskLowerThanSelector(feature_name="experience",threshold=0), # WARNING keep the same threshold as in FilterGroupSendersToGroupReceivers
                 validation_handler=CrossValidationHandler(n_partition=3)
             )
 

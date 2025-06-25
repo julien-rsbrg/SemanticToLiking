@@ -76,6 +76,7 @@ class MyGATConv(torch_geometric.nn.GATConv):
             **kwargs
         )
 
+        self.n_free_params = 0
 
         self.lin_src = self.lin_dst = None
         if edge_dim is not None:
@@ -83,6 +84,7 @@ class MyGATConv(torch_geometric.nn.GATConv):
                                      heads * out_channels, 
                                      bias=False,
                                      weight_initializer=edge_weight_initializer) # for uniformity
+            self.n_free_params += edge_dim*heads*out_channels
 
 
         # In case we are operating in bipartite graphs, we apply separate
@@ -133,6 +135,8 @@ class MyGATConv(torch_geometric.nn.GATConv):
                                        heads * out_channels, 
                                        bias=False,
                                        weight_initializer=dst_edge_weight_initializer)
+            self.n_free_params += src_edge_in_channels*heads*out_channels*int(src_edge_require_grad)
+            self.n_free_params += dst_edge_in_channels*heads*out_channels*int(dst_edge_require_grad)
 
         # In case we are operating in bipartite graphs, we apply separate
         # transformations 'lin_src' and 'lin_dst' to source and target nodes:
@@ -141,14 +145,20 @@ class MyGATConv(torch_geometric.nn.GATConv):
             self.lin_src_content = myLinear(in_channels, heads * out_channels,
                                           bias=False, weight_initializer=src_content_weight_initializer)
             self.lin_dst_content = self.lin_src_content
+            self.n_free_params += in_channels*heads*out_channels*int(src_content_require_grad)
+            self.lin_src_content.set_requires_grad(src_content_require_grad)
         else:
             self.lin_src_content = myLinear(src_content_in_channels, heads * out_channels, bias=False,
                                           weight_initializer=src_content_weight_initializer)
             self.lin_dst_content = myLinear(dst_content_in_channels, heads * out_channels, bias=False,
                                           weight_initializer=dst_content_weight_initializer)
 
-        self.lin_src_content.set_requires_grad(src_content_require_grad)
-        self.lin_dst_content.set_requires_grad(dst_content_require_grad) 
+            self.n_free_params += src_content_in_channels*heads*out_channels*int(src_content_require_grad)
+            self.n_free_params += dst_content_in_channels*heads*out_channels*int(dst_content_require_grad)
+
+            self.lin_src_content.set_requires_grad(src_content_require_grad)
+            self.lin_dst_content.set_requires_grad(dst_content_require_grad) 
+
         self.lin_src_edge.set_requires_grad(src_edge_require_grad) 
         self.lin_dst_edge.set_requires_grad(dst_edge_require_grad) 
 
@@ -159,8 +169,6 @@ class MyGATConv(torch_geometric.nn.GATConv):
             self.att_edge.requires_grad = False
 
         self.reset_parameters()
-
-
 
         self.src_content_require_grad = src_content_require_grad
         self.dst_content_require_grad = dst_content_require_grad
@@ -438,13 +446,53 @@ class MyGATConv(torch_geometric.nn.GATConv):
                 "dst_content_weight_initializer": self.dst_content_weight_initializer,
                 "dst_edge_weight_initializer": self.dst_edge_weight_initializer,
                 "edge_weight_initializer": self.edge_weight_initializer,
-            }
+            },
+            "n_free_params":self.n_free_params
         }
+        return config
+    
+
+class MyGATConvNLeaps(MyGATConv):
+    def __init__(self, n_leaps: int = 1, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.n_leaps = n_leaps
+    
+    def forward(self,*args,**kwargs):
+        complete_train_mask = kwargs["complete_train_mask"]
+        del kwargs["complete_train_mask"]
+        present_keys = set(kwargs.keys()).intersection({"x","edge_index","edge_attr","size","return_attention_weights"})
+        kwargs = {k: kwargs[k] for k in present_keys}
+
+        no_args = len(args) == 0
+        if no_args:
+            out = kwargs["x"].clone()
+            kwargs["x"] = out
+            for _ in range(self.n_leaps): 
+                kwargs["x"][complete_train_mask] = out[complete_train_mask]
+                out = super().forward(**kwargs) 
+            kwargs["x"][complete_train_mask] = out[complete_train_mask]
+            out = kwargs["x"]
+        else:
+            out = args[0].clone()
+            args = tuple([out,*args[1:]])
+            for _ in range(self.n_leaps): 
+                args[0][complete_train_mask] = out[complete_train_mask]
+                out = super().forward(*args,**kwargs)
+            args[0][complete_train_mask] = out[complete_train_mask]
+            out = args[0]
+
+        return out
+    
+    def get_config(self):
+        config = super().get_config()
+        config["name"] = "MyGATConvNLeaps"
+        config["parameters"]["n_leaps"] = self.n_leaps
         return config
     
 
 
 class MyBGATConv(MyGATConv,VIModule):
+    # TODO update
     def __init__(
         self,
         in_channels: Union[int, Tuple[int, int]],

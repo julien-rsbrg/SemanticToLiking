@@ -1,0 +1,57 @@
+model:
+  device: cuda
+  update_node_module:
+    name: MyGATConv
+    parameters:
+      add_self_loops: false
+      bias: true
+      concat: true
+      dropout: 0.0
+      dst_content_mask:
+      - false
+      dst_content_require_grad: true
+      dst_content_weight_initializer: glorot
+      dst_edge_mask:
+      - false
+      dst_edge_require_grad: true
+      dst_edge_weight_initializer: glorot
+      edge_dim: 1
+      edge_weight_initializer: glorot
+      fill_value: mean
+      heads: 1
+      in_channels:
+      - 1
+      - 1
+      negative_slope: 1.0
+      out_channels: 1
+      src_content_mask:
+      - true
+      src_content_require_grad: true
+      src_content_weight_initializer: glorot
+      src_edge_mask:
+      - true
+      src_edge_require_grad: true
+      src_edge_weight_initializer: glorot
+other:
+  model_fit_params:
+    early_stopping_monitor: val_mae
+    epochs: 10
+    l2_reg: 0.01
+    patience: 500
+    report_epoch_steps: 1
+  model_name: GAT_liking_sim_amp_3NN_3ExpNN
+  sim_used: original
+preprocessing_pipeline:
+  complete_train_mask_selector:
+    name: MaskLowerThanSelector
+    parameters:
+      feature_name: experience
+      threshold: 0
+      verbose: true
+  transformators: []
+  validation_handler:
+    name: MaskLowerThanSelector
+    parameters:
+      feature_name: experience
+      threshold: 0
+      verbose: true

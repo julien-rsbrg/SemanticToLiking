@@ -56,7 +56,8 @@ class ModelPipeline():
 
             pred_values = self.model.predict(node_attr=graph.x, 
                                              edge_index=graph.edge_index, 
-                                             edge_attr=graph.edge_attr)
+                                             edge_attr=graph.edge_attr,
+                                             **kwargs)
             true_values = graph.y
 
             prediction_table = {"pred_values":pred_values.detach().cpu().numpy().flatten(),
@@ -81,7 +82,7 @@ class ModelPipeline():
         """
         assert data_state in ["raw","preprocessed"], data_state
         if data_state == "raw":
-            graph = self.run_preprocessing(graph)
+            graph = self.run_preprocessing(graph)[0]
         pred_values = self.model.predict(node_attr=graph.x, 
                                          edge_index=graph.edge_index, 
                                          edge_attr=graph.edge_attr)

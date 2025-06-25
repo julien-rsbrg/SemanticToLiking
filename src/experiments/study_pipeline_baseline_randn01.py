@@ -6,7 +6,7 @@ import pandas as pd
 import src.data_handler as data_handler
 
 from src.processing.raw_data_cleaning import prepare_graph_for_participant
-from src.processing.preprocessing import PreprocessingPipeline, KeepFeatureNamedSelector, KeepGroupSendersToGroupReceivers, KeepKNearestNeighbors, MaskLowerThanSelector, CrossValidationHandler
+from src.processing.preprocessing import PreprocessingPipeline, KeepFeaturesSelector, FilterGroupSendersToGroupReceivers, KeepKNearestNeighbors, MaskLowerThanSelector, CrossValidationHandler
 from src.models.model_pipeline import ModelPipeline
 from src.models.baseline_models import SimpleConvModel, RandomNormalModel
 
@@ -32,11 +32,11 @@ if __name__ == "__main__":
 
         preprocessing_pipeline = PreprocessingPipeline(
             transformators=[
-                KeepGroupSendersToGroupReceivers(
+                FilterGroupSendersToGroupReceivers(
                     group_senders_mask_fn= lambda x: x["experience"] > 0,
                     group_receivers_mask_fn= lambda x: x["experience"] <= 0,
                 ),
-                KeepFeatureNamedSelector(verbose=True,feature_names_kept=["liking"])
+                KeepFeaturesSelector(verbose=True,feature_names_kept=["liking"])
             ],
             complete_train_mask_selector=MaskLowerThanSelector(feature_name="experience",threshold=0),
             validation_handler=CrossValidationHandler(n_partition=3)

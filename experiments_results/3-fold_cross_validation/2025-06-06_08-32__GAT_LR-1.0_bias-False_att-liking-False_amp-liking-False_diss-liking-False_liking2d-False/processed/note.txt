@@ -2,6 +2,8 @@ This model is the minimal model: no intercept/bias, only the parameter for simil
 
 Compared to previous models, the weigths are not clipped, ie are free to vary as they wish (although a lasso regularization is applied). Also, the LeakyReLu is removed ($\lambda = 0$).
 
+Time to train: 1h
+
 *Model mathematical formula:*
 
 

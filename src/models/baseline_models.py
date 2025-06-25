@@ -56,7 +56,8 @@ class RandomNormalModel(GenericModel):
                 "dim_out":self.dim_out,
                 "mean":self.mean,
                 "std":self.std
-            }
+            },
+            "n_free_params":0
         }
         return config
     
@@ -74,7 +75,7 @@ class SimpleConvModel(GenericModel):
         """fit the model to the dataset"""
         return {}
     
-    def predict(self,node_attr:Tensor, edge_index:Tensor, edge_attr:Tensor|None = None,**kwargs):
+    def predict(self, node_attr:Tensor, edge_index:Tensor, edge_attr:Tensor|None = None,**kwargs):
         """use the model to predict"""
         model_out = self.simple_conv.forward(x=node_attr,edge_index=edge_index)
         return model_out
@@ -111,7 +112,8 @@ class SimpleConvModel(GenericModel):
             "name":"SimpleConvModel",
             "parameters":{
                 "aggr":self.aggr
-            }
+            },
+            "n_free_params":0
         }
         return config
     

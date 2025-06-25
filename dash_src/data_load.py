@@ -82,6 +82,7 @@ def load_data(exp_path:str,participant_data_path:str):
     all_studies_summaries.reset_index(inplace=True,drop=True)
 
     # get participant data
+
     all_studies_summaries["participant"] = all_studies_summaries["participant_folder_name"].apply(lambda x: int(x.split("_")[-1]))
     
     participant_data = pd.read_csv(participant_data_path,index_col=0)

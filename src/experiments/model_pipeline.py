@@ -98,7 +98,7 @@ def run(sim_used:str = "original", dst_folder_path:str|None = None):
         
         # preprocessing 1 - experienced to not experienced
         print("Preprocessing 1")
-        preprocessing_cut = preprocessing.KeepGroupSendersToGroupReceivers(
+        preprocessing_cut = preprocessing.FilterGroupSendersToGroupReceivers(
             group_senders_mask_fn= lambda x: x["experience"] > 0,
             group_receivers_mask_fn= lambda x: x["experience"] <= 0,
         )

@@ -115,6 +115,18 @@ def save_yaml(data:dict,dst_path:str):
         yaml.dump(data, file)
 
 
+def compute_BIC(y_pred,y_true,n_params):
+    # https://en.wikipedia.org/wiki/Bayesian_information_criterion "Under the assumption that the model errors or disturbances are independent and identically distributed according to a normal distribution and the boundary condition that the derivative of the log likelihood with respect to the true variance is zero"
+    # https://stats.stackexchange.com/questions/455592/function-for-bayesian-information-criterion-bic: "You can check if a Gaussian model is reasonable or not by a quantile plot of the residuals for example."
+    
+    assert len(y_pred.shape) == 2, y_pred.shape
+    assert len(y_true.shape) == 2, y_true.shape 
+    
+    n_samples = y_pred.shape[0]
+    RSS = np.sum(np.power(y_true - y_pred, 2),axis=0)
+    return n_samples * np.log(RSS / n_samples) + n_params * np.log(n_samples)
+
+
 if __name__ == "__main__":
     import pandas as pd
     save_yaml(pd.DataFrame({"a":[0],"b":[3]}).iloc[0].to_dict(),"here.yml")

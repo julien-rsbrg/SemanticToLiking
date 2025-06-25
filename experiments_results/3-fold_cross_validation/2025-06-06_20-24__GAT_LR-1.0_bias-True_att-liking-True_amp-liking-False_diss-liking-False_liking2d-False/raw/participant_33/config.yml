@@ -1,0 +1,71 @@
+model:
+  device: cuda
+  update_node_module:
+    name: MyGATConv
+    parameters:
+      add_self_loops: false
+      bias: true
+      concat: true
+      dropout: 0.0
+      dst_content_mask:
+      - false
+      dst_content_require_grad: true
+      dst_content_weight_initializer: glorot
+      dst_edge_mask:
+      - false
+      dst_edge_require_grad: true
+      dst_edge_weight_initializer: glorot
+      edge_dim: 1
+      edge_weight_initializer: ones
+      fill_value: mean
+      heads: 1
+      in_channels:
+      - 1
+      - 1
+      negative_slope: 1.0
+      out_channels: 1
+      src_content_mask:
+      - true
+      src_content_require_grad: false
+      src_content_weight_initializer: ones
+      src_edge_mask:
+      - true
+      src_edge_require_grad: true
+      src_edge_weight_initializer: glorot
+other:
+  model_fit_params:
+    early_stopping_monitor: val_mae
+    epochs: 10000
+    l2_reg: 0.01
+    patience: 500
+    report_epoch_steps: 1
+  model_name: GAT_LR-1.0_bias-True_att-liking-True_amp-liking-False_diss-liking-False_liking2d-False
+  sim_used: original
+preprocessing_pipeline:
+  complete_train_mask_selector:
+    name: MaskLowerThanSelector
+    parameters:
+      feature_name: experience
+      threshold: 0
+      verbose: true
+  transformators:
+  - name: KeepGroupSendersToGroupReceivers
+    parameters:
+      group_receivers_mask_fn: <lambda>
+      group_receivers_mask_threshold_fn: null
+      group_receivers_thresholding: false
+      group_senders_mask_fn: <lambda>
+      group_senders_mask_threshold_fn: null
+      group_senders_thresholding: false
+      verbose: true
+  - name: KeepFeatureNamedSelector
+    parameters:
+      feature_names_kept:
+      - liking
+      verbose: true
+  validation_handler:
+    name: MaskLowerThanSelector
+    parameters:
+      feature_name: experience
+      threshold: 0
+      verbose: true

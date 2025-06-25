@@ -5,7 +5,7 @@ import pandas as pd
 from typing import Iterable
 
 from src.processing.raw_data_cleaning import build_node_table
-from src.utils import recursive_mkdirs, read_yaml, save_yaml, flatten_dict, convert_dataframe_to_dict, turn_dict_values_tensor_to_list
+from src.utils import recursive_mkdirs, read_yaml, save_yaml, flatten_dict, convert_dataframe_to_dict, turn_dict_values_tensor_to_list, compute_BIC
 
 def load_data():
     print("== Load Data: start ==")
@@ -35,54 +35,93 @@ def postprocess(src_folder_path,dst_folder_path):
     """
     Assumes a given structure for the raw data's folder structure 
     """
+    
 
     # aggregate participant-wise
     for participant_folder_name in os.listdir(src_folder_path):
         participant_folder_path = os.path.join(src_folder_path,participant_folder_name)
 
+        n_params = read_yaml(os.path.join(participant_folder_path,"config.yml"))["n_free_params"]
+
         models_params_init = []
         models_params_trained = [] 
-        summary = {}
+        summary = {
+            "graph":[],
+            "train_mean_pred-true":[],
+            "train_MAE":[],
+            "val_mean_pred-true":[],
+            "val_MAE":[]
+            }
         for graph_folder_name in os.listdir(participant_folder_path):
             graph_folder_path = os.path.join(participant_folder_path,graph_folder_name)
             if os.path.isdir(graph_folder_path):
+                summary["graph"].append(graph_folder_name)
+
                 pred_table = pd.read_csv(os.path.join(graph_folder_path,"prediction_table.csv"),index_col=0)
+                
                 train_diff = pred_table[pred_table["train_mask"]]["pred_values"] - pred_table[pred_table["train_mask"]]["true_values"]
                 val_diff = pred_table[pred_table["val_mask"]]["pred_values"] - pred_table[pred_table["val_mask"]]["true_values"]
-                summary["train_avg_pred-true"] = [np.mean(train_diff)]
-                summary["train_avg_MAE"] = [np.mean(np.abs(train_diff))]
+                
+                train_BIC = compute_BIC(y_pred = pred_table[pred_table["train_mask"]]["pred_values"].values[...,np.newaxis],
+                                        y_true = pred_table[pred_table["train_mask"]]["true_values"].values[...,np.newaxis],
+                                        n_params = n_params)
+                val_BIC = compute_BIC(y_pred = pred_table[pred_table["val_mask"]]["pred_values"].values[...,np.newaxis],
+                                      y_true = pred_table[pred_table["val_mask"]]["true_values"].values[...,np.newaxis],
+                                      n_params = n_params)
 
-                summary["val_avg_pred-true"] = [np.mean(val_diff)]
-                summary["val_avg_MAE"] = [np.mean(np.abs(val_diff))]
+                summary["train_mean_pred-true"].append(np.mean(train_diff))
+                summary["train_MAE"].append(np.mean(np.abs(train_diff)))
+
+                summary["val_mean_pred-true"].append(np.mean(val_diff))
+                summary["val_MAE"].append(np.mean(np.abs(val_diff)))
+
+                for i in range(len(train_BIC)):
+                    if not(f"train_BIC_{i}" in summary):
+                        summary["train_BIC_{i}"] = []
+                        summary["val_BIC_{i}"] = []
+                    summary[f"train_BIC_{i}"].append(val_BIC[i])
+                    summary[f"val_BIC_{i}"].append(val_BIC[i])
 
                 models_params_init.append(pd.read_csv(os.path.join(graph_folder_path,"model_params_init.csv"),index_col=0))
                 models_params_trained.append(pd.read_csv(os.path.join(graph_folder_path,"model_params_trained.csv"),index_col=0))
-        
+
         summary = pd.DataFrame(summary)
 
         model_params = []
+        model_params_mean_std = []
         if len(models_params_init):
             models_params_init = pd.concat(models_params_init,axis=0)
-            models_params_init_mean = models_params_init.mean().rename(index=lambda name: name + "_mean_init")
-            models_params_init_mean = pd.DataFrame(models_params_init.mean()).T
-            models_params_init_std = models_params_init.std().rename(index=lambda name: name + "_std_init")
-            models_params_init_std = pd.DataFrame(models_params_init.std()).T
+            _models_params_init = models_params_init.copy().rename(columns=lambda name: name + "_init")
+            model_params.append(_models_params_init)
 
-            models_params_init = pd.concat([models_params_init_mean,models_params_init_std],axis=1)
-            model_params.append(models_params_init)
+            models_params_init_mean = models_params_init.mean().rename(index=lambda name: name + "_mean_init")
+            models_params_init_mean = pd.DataFrame(models_params_init_mean).T
+            models_params_init_std = models_params_init.std().rename(index=lambda name: name + "_std_init")
+            models_params_init_std = pd.DataFrame(models_params_init_std).T
+
+            _models_params_init = pd.concat([models_params_init_mean,models_params_init_std],axis=1)
+            model_params_mean_std.append(_models_params_init)
         
         if len(models_params_trained):
             models_params_trained = pd.concat(models_params_trained,axis=0)
+            _models_params_trained = models_params_trained.copy().rename(columns=lambda name: name + "_trained")
+            model_params.append(_models_params_trained)
+
             models_params_trained_mean = models_params_trained.mean().rename(index=lambda name: name + "_mean_trained")
             models_params_trained_mean = pd.DataFrame(models_params_trained_mean).T
             models_params_trained_std = models_params_trained.std().rename(index=lambda name: name + "_std_trained")
             models_params_trained_std = pd.DataFrame(models_params_trained_std).T
-            models_params_trained = pd.concat([models_params_trained_mean,models_params_trained_std],axis=1)
-            model_params.append(models_params_trained)
+            
+            _models_params_trained = pd.concat([models_params_trained_mean,models_params_trained_std],axis=1)
+            model_params_mean_std.append(_models_params_trained)
         
         if len(model_params):
-            model_params = pd.concat(model_params,axis=1)
-            summary = pd.concat([summary,model_params],axis=1)
+            model_params = pd.concat(model_params, axis = 1)
+            model_params = model_params.loc[:,~model_params.columns.duplicated()].copy()
+
+            model_params_mean_std = pd.concat(model_params_mean_std, axis = 1)
+
+            summary = pd.concat([summary,model_params_mean_std,model_params], axis = 1)
         
         recursive_mkdirs(os.path.join(dst_folder_path,participant_folder_name))
         summary.to_csv(os.path.join(dst_folder_path, participant_folder_name, "summary.csv"))
@@ -105,6 +144,7 @@ def postprocess(src_folder_path,dst_folder_path):
     
 
     overall_summaries = pd.concat(overall_summaries,axis=0)
+    overall_summaries = overall_summaries.ffill()
     overall_summaries.reset_index(inplace=True,drop=True)
     overall_summaries.to_csv(os.path.join(dst_folder_path,"overall_summaries.csv"))
 
@@ -121,5 +161,5 @@ def postprocess(src_folder_path,dst_folder_path):
 
 if __name__ == "__main__":
     postprocess("src/data_generation/examples/raw/study_0","src/data_generation/examples/processed/study_0")
-    postprocess("src/data_generation/examples/raw/study_1","src/data_generation/examples/processed/study_1")
-    postprocess("src/data_generation/examples/raw/study_2","src/data_generation/examples/processed/study_2")
+    # postprocess("src/data_generation/examples/raw/study_1","src/data_generation/examples/processed/study_1")
+    # postprocess("src/data_generation/examples/raw/study_2","src/data_generation/examples/processed/study_2")

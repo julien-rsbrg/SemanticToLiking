@@ -1,0 +1,11 @@
+,epoch,train_loss,train_mae,val_mae
+0,0,tensor(1.2172),tensor(0.8507),tensor(0.9569)
+1,1,tensor(1.2166),tensor(0.8502),tensor(0.9571)
+2,2,tensor(1.2155),tensor(0.8496),tensor(0.9573)
+3,3,tensor(1.2139),tensor(0.8487),tensor(0.9576)
+4,4,tensor(1.2119),tensor(0.8478),tensor(0.9580)
+5,5,tensor(1.2095),tensor(0.8467),tensor(0.9584)
+6,6,tensor(1.2069),tensor(0.8456),tensor(0.9589)
+7,7,tensor(1.2041),tensor(0.8443),tensor(0.9593)
+8,8,tensor(1.2010),tensor(0.8430),tensor(0.9598)
+9,9,tensor(1.1978),tensor(0.8416),tensor(0.9604)

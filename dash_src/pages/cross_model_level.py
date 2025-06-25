@@ -218,6 +218,7 @@ layout = html.Div(
                         id = "cross_model_matrix_0_heatmap_formula"
                     ),
                 ], style={'width': '80%', 'display': 'inline-block'}),
+                dcc.RadioItems(['show legend', 'hide legend'], 'show legend', id="cross_model_matrix_0_legend",inline=True),
                 dcc.Graph(id="cross_model_matrix_0")
             ], style={'width': '45%', 'display': 'inline-block'}),
             html.Div([
@@ -405,9 +406,10 @@ def update_cross_model_distrib_1(var_x,var_y,constraints,bar_or_violin,show_lege
     Input("cross_model_matrix_0_var","value"),
     Input("cross_model_matrix_0_scatter_vs_heatmap","value"),
     Input("cross_model_matrix_0_heatmap_formula","value"),
+    Input("cross_model_matrix_0_legend","value"),
     Input("models_comparison_selected","value")
 )
-def update_cross_model_matrix_0(var,scatter_vs_heatmap,heatmap_formula,groups_kept,join_on="participant_folder_name",group_by="model_id",data=all_studies_summaries):
+def update_cross_model_matrix_0(var,scatter_vs_heatmap,heatmap_formula,show_legend,groups_kept,join_on="participant_folder_name",group_by="model_id",data=all_studies_summaries):
     data, _ = utils.restrict_data(data,group_by,groups_kept,np.zeros(len(data),dtype=bool))
     
     if scatter_vs_heatmap == "scatter":
@@ -423,5 +425,6 @@ def update_cross_model_matrix_0(var,scatter_vs_heatmap,heatmap_formula,groups_ke
             var=var,
             fn=heatmap_formula,
             join_on=join_on,
-            group_by=group_by
+            group_by=group_by,
+            showticks=show_legend == "show legend"
         )

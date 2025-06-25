@@ -88,7 +88,9 @@ class NodeTransformator(ABC):
             edge_index: np.ndarray, 
             edge_attr: pd.DataFrame,
             x: pd.DataFrame,  
-            y: pd.DataFrame | None = None, **kwargs):
+            y: pd.DataFrame | None = None, 
+            edge_locked: np.ndarray | None = None,
+            **kwargs):
         """
         Receive a graph and fit instantiation's attributes for edge selection.
 
@@ -109,7 +111,9 @@ class NodeTransformator(ABC):
             edge_index: np.ndarray, 
             edge_attr: pd.DataFrame,
             x: pd.DataFrame,  
-            y: pd.DataFrame | None = None, **kwargs) -> tuple[pd.DataFrame,pd.DataFrame|None]:
+            y: pd.DataFrame | None = None, 
+            edge_locked: np.ndarray | None = None,
+            **kwargs) -> tuple[pd.DataFrame,pd.DataFrame|None]:
         """Directly returns the best features from what was found during fit and that are present in X.
 
         Parameters
@@ -121,7 +125,7 @@ class NodeTransformator(ABC):
         -------
         """
         self._check_types(x,y)
-        return edge_index, edge_attr, x, y
+        return edge_index, edge_attr, x, y, edge_locked
 
 
     def fit_transform(
@@ -129,7 +133,8 @@ class NodeTransformator(ABC):
         edge_index: np.ndarray, 
         edge_attr: pd.DataFrame,
         x: pd.DataFrame,  
-        y: pd.DataFrame | None = None, 
+        y: pd.DataFrame | None = None,
+        edge_locked: np.ndarray | None = None,
         **kwargs
     ) -> tuple[pd.DataFrame,pd.DataFrame|None]:
         """Receive new graph and remove some of its edges 
@@ -142,9 +147,9 @@ class NodeTransformator(ABC):
         """
         self._check_types(x,y)
 
-        self.fit(edge_index, edge_attr,x,y)
-        edge_index, edge_attr, x, y = self.transform(edge_index, edge_attr,x,y)
-        return edge_index, edge_attr, x, y
+        self.fit(edge_index, edge_attr,x,y,edge_locked)
+        edge_index, edge_attr, x, y, edge_locked = self.transform(edge_index,edge_attr,x,y,edge_locked)
+        return edge_index, edge_attr, x, y, edge_locked
 
 
 class SeparatePositiveNegative(NodeTransformator):
@@ -181,13 +186,25 @@ class SeparatePositiveNegative(NodeTransformator):
                 "parameters":{"verbose":self.verbose,
                               "feature_separated":self.feature_separated}}
 
-    def fit(self, edge_index: np.ndarray, edge_attr: pd.DataFrame, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
-        super().fit(edge_index, edge_attr,x,y)
+    def fit(self, 
+            edge_index: np.ndarray, 
+            edge_attr: pd.DataFrame, 
+            x: pd.DataFrame,  
+            y: pd.DataFrame | None = None, 
+            edge_locked: np.ndarray | None = None,
+            **kwargs):
+        super().fit(edge_index, edge_attr,x,y,edge_locked)
         self._feature_names_out = self._feature_names_in + [self.feature_separated+"_pos", self.feature_separated+"_neg"]
         return self
 
-    def transform(self, edge_index: np.ndarray, edge_attr: pd.DataFrame, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
-        edge_index,edge_attr,x,y = super().transform(edge_index, edge_attr,x, y)
+    def transform(self, 
+                  edge_index: np.ndarray, 
+                  edge_attr: pd.DataFrame, 
+                  x: pd.DataFrame,  
+                  y: pd.DataFrame | None = None, 
+                  edge_locked: np.ndarray | None = None,
+                  **kwargs):
+        edge_index,edge_attr,x,y,edge_locked = super().transform(edge_index,edge_attr,x,y,edge_locked)
 
         def transform_separate_feature(data:pd.DataFrame, feature:str, replace_value:float = 0.0,threshold:float = 0.0):
             new_data = copy.deepcopy(data)
@@ -203,11 +220,11 @@ class SeparatePositiveNegative(NodeTransformator):
         new_x = transform_separate_feature(x, self.feature_separated)
         self._feature_names_out = new_x.columns.tolist()
 
-        return edge_index, edge_attr, new_x, y
+        return edge_index, edge_attr, new_x, y, edge_locked
     
 
 
-class KeepFeatureNamedSelector(NodeTransformator):
+class KeepNodeFeaturesSelector(NodeTransformator):
     """
     Direct feature selector of node features that keep only the ones given.
     """
@@ -226,7 +243,7 @@ class KeepFeatureNamedSelector(NodeTransformator):
     @property
     def main_name(self) -> str:
         """Main name of the transform function"""
-        return "KeepFeatureNamedSelector"
+        return "KeepFeaturesSelector"
     
     @property
     def params_repr(self) -> str:
@@ -235,19 +252,90 @@ class KeepFeatureNamedSelector(NodeTransformator):
     
     def get_config(self):
         """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
-        return {"name":"KeepFeatureNamedSelector", 
+        return {"name":"KeepFeaturesSelector", 
                 "parameters":{"verbose":self.verbose,
                               "feature_names_kept":self.feature_names_kept}}
     
-    def fit(self, edge_index: np.ndarray, edge_attr: pd.DataFrame, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
-        super().fit(edge_index, edge_attr,x,y)
-        self._feature_names_out = self.feature_names_kept
+    def fit(self, 
+            edge_index: np.ndarray, 
+            edge_attr: pd.DataFrame, 
+            x: pd.DataFrame,  
+            y: pd.DataFrame | None = None, 
+            edge_locked: np.ndarray | None = None,
+            **kwargs):
+        super().fit(edge_index, edge_attr,x,y,edge_locked)
         return self
 
-    def transform(self, edge_index: np.ndarray, edge_attr: pd.DataFrame, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
-        edge_index,edge_attr,new_x,new_y = super().transform(edge_index, edge_attr,x, y)
+    def transform(self, 
+                  edge_index: np.ndarray, 
+                  edge_attr: pd.DataFrame, 
+                  x: pd.DataFrame,  
+                  y: pd.DataFrame | None = None, 
+                  edge_locked: np.ndarray | None = None,
+                  **kwargs):
+        edge_index,edge_attr,new_x,new_y,edge_locked = super().transform(edge_index, edge_attr, x, y, edge_locked)
         new_x = x[self.feature_names_kept]
-        return edge_index, edge_attr, new_x, new_y
+        return edge_index, edge_attr, new_x, new_y, edge_locked
+
+
+class FillFeature(NodeTransformator):
+    """
+    Direct feature selector of node features that keep only the ones given.
+    """
+    def __init__(self,verbose, feature_name:str, mask_fn: callable, fill_value: float = 0.0):
+        """
+        
+        Parameters
+        ----------
+        verbose : bool
+
+        feature_names_kept : list[str]
+        """
+        super().__init__(verbose)
+        self.feature_name = feature_name
+        self.mask_fn = mask_fn
+        self.fill_value = fill_value
+
+    @property
+    def main_name(self) -> str:
+        """Main name of the transform function"""
+        return "FillFeature"
+    
+    @property
+    def params_repr(self) -> str:
+        """Representation of the parameters of the transform function"""
+        return ""
+    
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        return {"name":"FillFeature", 
+                "parameters":{"verbose":self.verbose,
+                              "feature_name":self.feature_names_kept,
+                              "mask_fn":self.mask_fn.__name__,
+                              "fill_value":self.fill_value}}
+    
+    def fit(self, 
+            edge_index: np.ndarray, 
+            edge_attr: pd.DataFrame, 
+            x: pd.DataFrame,  
+            y: pd.DataFrame | None = None, 
+            edge_locked: np.ndarray | None = None,
+            **kwargs):
+        super().fit(edge_index, edge_attr,x,y,edge_locked)
+        return self
+
+    def transform(self, 
+                  edge_index: np.ndarray, 
+                  edge_attr: pd.DataFrame, 
+                  x: pd.DataFrame,  
+                  y: pd.DataFrame | None = None, 
+                  edge_locked: np.ndarray | None = None,
+                  **kwargs):
+        edge_index,edge_attr,new_x,new_y,edge_locked = super().transform(edge_index, edge_attr, x, y, edge_locked)
+        new_x = copy.deepcopy(new_x)
+        new_x.loc[self.mask_fn(new_x),self.feature_name] = self.fill_value
+        return edge_index, edge_attr, new_x, new_y, edge_locked
+
 
 
 class PolynomialFeatureGenerator(NodeTransformator):
@@ -304,8 +392,14 @@ class PolynomialFeatureGenerator(NodeTransformator):
         return config
     
 
-    def fit(self, edge_index: np.ndarray, edge_attr: pd.DataFrame, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs) -> Tuple[pd.DataFrame,pd.DataFrame]:
-        super().fit(edge_index, edge_attr,x, y)
+    def fit(self, 
+            edge_index: np.ndarray, 
+            edge_attr: pd.DataFrame, 
+            x: pd.DataFrame,  
+            y: pd.DataFrame | None = None, 
+            edge_locked: np.ndarray | None = None,
+            **kwargs) -> Tuple[pd.DataFrame,pd.DataFrame]:
+        super().fit(edge_index, edge_attr, x, y, edge_locked)
         
         x_involved = x[self.feature_names_involved].copy()
         self.poly_generator.fit(X=x_involved.to_numpy())
@@ -317,8 +411,14 @@ class PolynomialFeatureGenerator(NodeTransformator):
 
         return self
 
-    def transform(self, edge_index: np.ndarray, edge_attr: pd.DataFrame, x: pd.DataFrame,  y: pd.DataFrame | None = None, **kwargs):
-        edge_index,edge_attr,x,y = super().transform(edge_index, edge_attr,x, y)
+    def transform(self, 
+                  edge_index: np.ndarray, 
+                  edge_attr: pd.DataFrame, 
+                  x: pd.DataFrame,  
+                  y: pd.DataFrame | None = None, 
+                  edge_locked: np.ndarray | None = None,
+                  **kwargs):
+        edge_index,edge_attr,x,y = super().transform(edge_index, edge_attr,x, y, edge_locked)
 
         x_involved = x[self.feature_names_involved].copy()
         new_x = self.poly_generator.transform(x_involved)
@@ -327,7 +427,7 @@ class PolynomialFeatureGenerator(NodeTransformator):
 
         new_x = x.join(new_x)
 
-        return edge_index, edge_attr, new_x, y
+        return edge_index, edge_attr, new_x, y, edge_locked
 
 
 
@@ -394,7 +494,12 @@ class EdgeTransformator(ABC):
         return self.name
 
 
-    def _check_types(self, edge_index: np.ndarray, edge_attr: pd.DataFrame | None = None, x: pd.DataFrame | None = None,  y: pd.DataFrame | None = None):
+    def _check_types(self, 
+                     edge_index: np.ndarray, 
+                     edge_attr: pd.DataFrame | None = None, 
+                     x: pd.DataFrame | None = None, 
+                     y: pd.DataFrame | None = None,
+                     edge_locked: np.ndarray | None = None):
         assert (
             isinstance(edge_index,np.ndarray)
         ), ("Please input an np.ndarray for edge_index", (edge_index,type(edge_index)))
@@ -407,10 +512,17 @@ class EdgeTransformator(ABC):
         assert (
             isinstance(y, pd.DataFrame) or y is None
         ), "Please input a DataFrame or let y None"
+        assert (
+            isinstance(edge_locked, np.ndarray) or edge_locked is None
+        ), "Please input a np.ndarray or let edge_locked be None"
 
 
-
-    def fit(self, edge_index: np.ndarray, edge_attr: pd.DataFrame | None = None, x: pd.DataFrame | None = None,  y: pd.DataFrame | None = None):
+    def fit(self, 
+            edge_index: np.ndarray, 
+            edge_attr: pd.DataFrame | None = None, 
+            x: pd.DataFrame | None = None, 
+            y: pd.DataFrame | None = None,
+            edge_locked: np.ndarray | None = None):
         """
         Receive a graph and fit instantiation's attributes for edge selection.
 
@@ -421,11 +533,16 @@ class EdgeTransformator(ABC):
         -------
 
         """
-        self._check_types(edge_index,edge_attr,x,y)
+        self._check_types(edge_index,edge_attr,x,y,edge_locked)
 
         return self
 
-    def transform(self, edge_index: np.ndarray, edge_attr: pd.DataFrame | None = None, x: pd.DataFrame | None = None,  y: pd.DataFrame | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
+    def transform(self, 
+                  edge_index: np.ndarray, 
+                  edge_attr: pd.DataFrame | None = None, 
+                  x: pd.DataFrame | None = None,  
+                  y: pd.DataFrame | None = None,
+                  edge_locked: np.ndarray | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
         """Directly returns the best features from what was found during fit and that are present in X.
 
         Parameters
@@ -436,12 +553,21 @@ class EdgeTransformator(ABC):
         Returns
         -------
         """
-        self._check_types(edge_index,edge_attr,x,y)
+        self._check_types(edge_index,edge_attr,x,y,edge_locked)
 
-        return edge_index, edge_attr, x, y
+        if edge_locked is None:
+            edge_locked = np.zeros(edge_index.shape[-1],dtype=bool)
+        edge_locked = copy.deepcopy(edge_locked)
+
+        return edge_index, edge_attr, x, y, edge_locked
 
     def fit_transform(
-        self, edge_index: np.ndarray, edge_attr: pd.DataFrame | None = None, x: pd.DataFrame | None = None,  y: pd.DataFrame | None = None
+        self, 
+        edge_index: np.ndarray, 
+        edge_attr: pd.DataFrame | None = None, 
+        x: pd.DataFrame | None = None,  
+        y: pd.DataFrame | None = None,
+        edge_locked: np.ndarray | None = None
     ) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
         """Receive new graph and remove some of its edges 
 
@@ -451,14 +577,68 @@ class EdgeTransformator(ABC):
         Returns
         -------
         """
-        self._check_types(edge_index,edge_attr,x,y)
+        self._check_types(edge_index,edge_attr,x,y,edge_locked)
 
-        self.fit(edge_index,edge_attr,x,y)
-        new_edge_index, new_edge_attr, x, y = self.transform(edge_index,edge_attr,x,y)
-        return new_edge_index, new_edge_attr, x, y
+        self.fit(edge_index,edge_attr,x,y,edge_locked)
+        new_edge_index, new_edge_attr, x, y, new_edge_locked = self.transform(edge_index,edge_attr,x,y,edge_locked)
+        return new_edge_index, new_edge_attr, x, y, new_edge_locked
+
+class KeepEdgeFeaturesSelector(EdgeTransformator):
+    """
+    Direct feature selector of edge features that keep only the ones given.
+    """
+    def __init__(self,verbose, feature_names_kept:list[str]):
+        """
+        
+        Parameters
+        ----------
+        verbose : bool
+
+        feature_names_kept : list[str]
+        """
+        super().__init__(verbose)
+        self.feature_names_kept = feature_names_kept
+
+    @property
+    def main_name(self) -> str:
+        """Main name of the transform function"""
+        return "KeepEdgeFeaturesSelector"
+    
+    @property
+    def params_repr(self) -> str:
+        """Representation of the parameters of the transform function"""
+        return ""
+    
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        return {"name":"KeepEdgeFeaturesSelector", 
+                "parameters":{"verbose":self.verbose,
+                              "feature_names_kept":self.feature_names_kept}}
+    
+    def fit(self, 
+            edge_index: np.ndarray, 
+            edge_attr: pd.DataFrame, 
+            x: pd.DataFrame,  
+            y: pd.DataFrame | None = None, 
+            edge_locked: np.ndarray | None = None,
+            **kwargs):
+        super().fit(edge_index, edge_attr,x,y,edge_locked)
+        return self
+
+    def transform(self, 
+                  edge_index: np.ndarray, 
+                  edge_attr: pd.DataFrame, 
+                  x: pd.DataFrame,  
+                  y: pd.DataFrame | None = None, 
+                  edge_locked: np.ndarray | None = None,
+                  **kwargs):
+        edge_index,edge_attr,x,y,edge_locked = super().transform(edge_index, edge_attr, x, y, edge_locked)
+        new_edge_attr = copy.deepcopy(edge_attr)
+        new_edge_attr = new_edge_attr[self.feature_names_kept]
+        return edge_index, new_edge_attr, x, y, edge_locked
 
 
-class KeepGroupSendersToGroupReceivers(EdgeTransformator):
+class FilterGroupSendersToGroupReceivers(EdgeTransformator):
     """
     Careful wisely name parameters since the names are used in configuration saving 
     
@@ -472,7 +652,8 @@ class KeepGroupSendersToGroupReceivers(EdgeTransformator):
         group_receivers_thresholding: bool = False,
         group_senders_mask_threshold_fn: Callable|None = None,
         group_receivers_mask_threshold_fn: Callable|None = None,
-        verbose: bool = True
+        verbose: bool = True,
+        keep: bool = True
     ):
         super().__init__(verbose)
         self.group_senders_mask_fn = group_senders_mask_fn
@@ -483,12 +664,14 @@ class KeepGroupSendersToGroupReceivers(EdgeTransformator):
 
         self.group_senders_mask_threshold_fn = group_senders_mask_threshold_fn
         self.group_receivers_mask_threshold_fn = group_receivers_mask_threshold_fn
+
+        self.keep = keep # else remove
     
 
     @property
     def main_name(self) -> str:
         """Main name of the transform function"""
-        return "KeepGroupSendersToGroupReceivers"
+        return "FilterGroupSendersToGroupReceivers"
     
     @property
     def params_repr(self) -> str:
@@ -502,14 +685,15 @@ class KeepGroupSendersToGroupReceivers(EdgeTransformator):
     
     def get_config(self):
         """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
-        config = {"name":"KeepGroupSendersToGroupReceivers", 
+        config = {"name":"FilterGroupSendersToGroupReceivers", 
                   "parameters":{"verbose":self.verbose,
                                 "group_senders_mask_fn":self.group_senders_mask_fn.__name__,
                                 "group_receivers_mask_fn":self.group_receivers_mask_fn.__name__,
                                 "group_senders_thresholding":self.group_senders_thresholding,
                                 "group_receivers_thresholding":self.group_receivers_thresholding,
                                 "group_senders_mask_threshold_fn":self.group_senders_mask_threshold_fn.__name__ if not(self.group_senders_mask_threshold_fn is None) else None,
-                                "group_receivers_mask_threshold_fn":self.group_receivers_mask_threshold_fn.__name__ if not(self.group_receivers_mask_threshold_fn is None) else None
+                                "group_receivers_mask_threshold_fn":self.group_receivers_mask_threshold_fn.__name__ if not(self.group_receivers_mask_threshold_fn is None) else None,
+                                "keep":self.keep
                                 }
         }
         return config
@@ -518,8 +702,9 @@ class KeepGroupSendersToGroupReceivers(EdgeTransformator):
                   edge_index:np.ndarray, 
                   edge_attr: pd.DataFrame | None = None, 
                   x: pd.DataFrame = None, 
-                  y: pd.DataFrame | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
-        edge_index, edge_attr, x, y = super().transform(edge_index, edge_attr, x, y)
+                  y: pd.DataFrame | None = None,
+                  edge_locked: np.ndarray | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
+        edge_index, edge_attr, x, y, edge_locked = super().transform(edge_index, edge_attr, x, y, edge_locked)
 
         if self.group_senders_thresholding:
             threshold_sender = self.group_senders_mask_threshold_fn(x)
@@ -542,19 +727,24 @@ class KeepGroupSendersToGroupReceivers(EdgeTransformator):
         is_edge_selected[1,:] = is_receiver_selected[edge_index[1,:]]
         is_edge_selected = is_edge_selected[0,:] * is_edge_selected[1,:]
 
-        new_edge_index = copy.deepcopy(edge_index)[:,is_edge_selected]
+        if not(self.keep):
+            is_edge_selected = ~is_edge_selected
+
+        new_edge_index = copy.deepcopy(edge_index)[:,is_edge_selected+edge_locked]
         if not(edge_attr is None):
-            new_edge_attr = copy.deepcopy(edge_attr).iloc[is_edge_selected]
+            new_edge_attr = copy.deepcopy(edge_attr).iloc[is_edge_selected+edge_locked]
         else:
             new_edge_attr = None
         
         new_x = copy.deepcopy(x)
         new_y = copy.deepcopy(y)
+        new_edge_locked = copy.deepcopy(edge_locked)
 
         if self.verbose:
             print("Number of Edges after transform:", new_edge_index.shape[1])
 
-        return new_edge_index, new_edge_attr, new_x, new_y
+        return new_edge_index, new_edge_attr, new_x, new_y, new_edge_locked
+
 
 
 
@@ -564,12 +754,22 @@ class KeepKNearestNeighbors(EdgeTransformator):
         k: int,
         edge_attr_names_used: list[str],
         ord: int = 1,
+        mode: str = "min",
         verbose: bool = True
     ):
+        """
+        Parameters
+        ----------
+        - mode : (str)
+            Can be "max" or "min"
+        """
         super().__init__(verbose)
         self.k = k
         self.edge_attr_names_used = edge_attr_names_used
         self.ord = ord
+        self.mode = mode
+
+        assert ord != 0 or len(edge_attr_names_used) == 1
 
     @property
     def main_name(self) -> str:
@@ -592,7 +792,8 @@ class KeepKNearestNeighbors(EdgeTransformator):
                   "parameters":{"verbose":self.verbose,
                                 "k":self.k,
                                 "edge_attr_names_used":self.edge_attr_names_used,
-                                "ord":self.ord}
+                                "ord":self.ord,
+                                "mode":self.mode}
         }
         return config
 
@@ -600,35 +801,418 @@ class KeepKNearestNeighbors(EdgeTransformator):
                   edge_index:np.ndarray, 
                   edge_attr: pd.DataFrame | None = None, 
                   x: pd.DataFrame | None = None, 
-                  y: pd.DataFrame | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
-        edge_index, edge_attr, x, y = super().transform(edge_index, edge_attr, x, y)
+                  y: pd.DataFrame | None = None,
+                  edge_locked: np.ndarray | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
+        
+        edge_index, edge_attr, x, y, edge_locked = super().transform(edge_index, edge_attr, x, y, edge_locked)
 
         if self.verbose:
             print("Number of Edges before transform:", edge_index.shape[1])
 
         if len(self.edge_attr_names_used) >= 1:
-            edge_dist = np.linalg.norm(edge_attr[self.edge_attr_names_used], ord=self.ord, axis=1)
+            if self.ord == 0:
+                edge_dist = edge_attr[self.edge_attr_names_used].values.flatten()
+            else:
+                edge_dist = np.linalg.norm(edge_attr[self.edge_attr_names_used], ord=self.ord, axis=1)
+            
             edge_kept = np.zeros(edge_index.shape[1],dtype=bool)
             
             # from receiver point of view
             for node_id in np.unique(edge_index[1,:]):
                 ids_node_receiver = np.where(edge_index[1,:] == node_id)[0]
                 node_dist_from_sender = edge_dist[ids_node_receiver]
-                kept_k_neigbors_edges = np.argsort(node_dist_from_sender)[:self.k]
+
+                if self.mode == "min":
+                    kept_k_neigbors_edges = np.argsort(node_dist_from_sender)[:self.k]
+                else:
+                    kept_k_neigbors_edges = np.argsort(node_dist_from_sender)[-self.k:]
                 edge_kept[ids_node_receiver[kept_k_neigbors_edges]] = True
             
         else:
             edge_kept = np.zeros(edge_index.shape[1],dtype=bool)
         
-        new_edge_index = copy.deepcopy(edge_index)[:,edge_kept]
-        new_edge_attr = copy.deepcopy(edge_attr).iloc[edge_kept]
+        new_edge_index = copy.deepcopy(edge_index)[:,edge_kept+edge_locked]
+        new_edge_attr = copy.deepcopy(edge_attr).iloc[edge_kept+edge_locked]
         new_x = copy.deepcopy(x)
         new_y = copy.deepcopy(y)
+        new_edge_locked = copy.deepcopy(edge_locked)
         
         if self.verbose:
             print("Number of Edges after transform:", new_edge_index.shape[1])
 
-        return new_edge_index, new_edge_attr, new_x, new_y
+        return new_edge_index, new_edge_attr, new_x, new_y, new_edge_locked
+
+
+class KeepNeighborsDistThreshold(EdgeTransformator):
+    def __init__(
+        self,
+        edge_attr_names_used: str,
+        threshold: float,
+        ord: int = 1,
+        upper: bool = False,
+        verbose: bool = True
+    ):
+        """
+        Parameters:
+        -----------
+        - upper : (bool)
+            if True, keep edges with distance greater or equal to threshold. Else, lower or equal to threshold.
+        """
+        super().__init__(verbose)
+        self.edge_attr_names_used = edge_attr_names_used
+        self.threshold = threshold
+        self.ord = ord
+        self.upper = upper
+
+    @property
+    def main_name(self) -> str:
+        """Main name of the transform function"""
+        return "KeepNeighborsDistThreshold"
+    
+    @property
+    def params_repr(self) -> str:
+        """Representation of the parameters of the transform function"""
+        comparison = ">=" if self.upper else "<="
+        return comparison + str(self.threshold)
+
+    @property
+    def name(self) -> str:
+        """Name of the transform function used for authentificate"""
+        return self.main_name + self.params_repr
+    
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        config = {"name":"KeepNeighborsDistThreshold", 
+                  "parameters":{"verbose":self.verbose,
+                                "edge_attr_names_used":self.edge_attr_names_used,
+                                "threshold":self.threshold,
+                                "ord":self.ord,
+                                "upper":self.upper}
+        }
+        return config
+
+    def transform(self, 
+                  edge_index:np.ndarray, 
+                  edge_attr: pd.DataFrame | None = None, 
+                  x: pd.DataFrame | None = None, 
+                  y: pd.DataFrame | None = None,
+                  edge_locked: np.ndarray | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
+        edge_index, edge_attr, x, y, edge_locked = super().transform(edge_index, edge_attr, x, y, edge_locked)
+
+        if self.verbose:
+            print("Number of Edges before transform:", edge_index.shape[1])
+        
+        if len(self.edge_attr_names_used) >= 1:
+            edge_dist = np.linalg.norm(edge_attr[self.edge_attr_names_used], ord=self.ord, axis=1)
+
+            if self.upper:
+                edge_kept = edge_dist >= self.threshold
+            else:
+                edge_kept = edge_dist <= self.threshold
+            
+        else:
+            edge_kept = np.zeros(edge_index.shape[1],dtype=bool)
+        
+        
+        new_edge_index = copy.deepcopy(edge_index)[:,edge_kept+edge_locked]
+        new_edge_attr = copy.deepcopy(edge_attr).iloc[edge_kept+edge_locked]
+        new_x = copy.deepcopy(x)
+        new_y = copy.deepcopy(y)
+        new_edge_locked = copy.deepcopy(edge_locked)
+        
+        if self.verbose:
+            print("Number of Edges after transform:", new_edge_index.shape[1])
+
+        return new_edge_index, new_edge_attr, new_x, new_y, new_edge_locked
+
+
+
+class KeepMonotonousNodeAttr(EdgeTransformator):
+    def __init__(
+        self,
+        node_attr_name_used: str,
+        ascending: bool = True, # else decreasing
+        strict: bool = True,
+        verbose: bool = True
+    ):
+        """
+        Parameters:
+        -----------
+        - upper : (bool)
+            if True, keep edges with distance greater or equal to threshold. Else, lower or equal to threshold.
+        """
+        super().__init__(verbose)
+        self.node_attr_name_used = node_attr_name_used
+        self.ascending = ascending
+        self.strict = strict
+
+    @property
+    def main_name(self) -> str:
+        """Main name of the transform function"""
+        return "KeepMonotonousNodeAttr"
+    
+    @property
+    def params_repr(self) -> str:
+        """Representation of the parameters of the transform function"""
+        txt = ""
+        if self.strict:
+            txt += "Strict"
+
+        if self.ascending:
+            txt += "Ascending"
+        else:
+            txt += "Descending"
+        
+        return txt
+
+    @property
+    def name(self) -> str:
+        """Name of the transform function used for authentificate"""
+        return self.main_name + "-" + self.params_repr
+    
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        config = {"name":"KeepMonotonousNodeAttr", 
+                  "parameters":{"verbose":self.verbose,
+                                "node_attr_name_used":self.node_attr_name_used,
+                                "ascending":self.ascending,
+                                "strict":self.threshold}
+        }
+        return config
+
+    def transform(self, 
+                  edge_index:np.ndarray, 
+                  edge_attr: pd.DataFrame | None = None, 
+                  x: pd.DataFrame | None = None, 
+                  y: pd.DataFrame | None = None,
+                  edge_locked: np.ndarray | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
+        edge_index, edge_attr, x, y, edge_locked = super().transform(edge_index, edge_attr, x, y, edge_locked)
+
+        if self.verbose:
+            print("Number of Edges before transform:", edge_index.shape[1])
+        
+        sender_ids = edge_index[0,:]
+        receiver_ids = edge_index[1,:]
+
+        sender_values = x[self.node_attr_name_used].values[sender_ids]
+        receiver_values = x[self.node_attr_name_used].values[receiver_ids]
+
+        diff = sender_values - receiver_values
+
+        if self.ascending:
+            if self.strict:
+                edge_kept = diff < 0
+            else:
+                edge_kept = diff <= 0
+        else:
+            if self.strict:
+                edge_kept = diff > 0
+            else:
+                edge_kept = diff >= 0        
+        
+        new_edge_index = copy.deepcopy(edge_index[:,edge_kept+edge_locked])
+        new_edge_attr = copy.deepcopy(edge_attr[edge_kept+edge_locked])
+        new_x = copy.deepcopy(x)
+        new_y = copy.deepcopy(y)
+        new_edge_locked = copy.deepcopy(edge_locked)
+        
+        if self.verbose:
+            print("Number of Edges after transform:", new_edge_index.shape[1])
+
+        return new_edge_index, new_edge_attr, new_x, new_y, new_edge_locked
+
+
+
+class LockKNearestGroupSendersToGroupReceivers(EdgeTransformator):
+    def __init__(
+        self,
+        group_senders_mask_fn: callable,
+        group_receivers_mask_fn: callable,
+        k: int,
+        edge_attr_names_used: list[str],
+        ord: int = 1,
+        mode: str = "min",
+        verbose: bool = True
+    ):
+        """
+        Parameters:
+        -----------
+        - upper : (bool)
+            if True, keep edges with distance greater or equal to threshold. Else, lower or equal to threshold.
+        
+        - mode : (str)
+            Can be "max" or "min"
+        """
+        super().__init__(verbose)
+
+        self.group_senders_mask_fn = group_senders_mask_fn
+        self.group_receivers_mask_fn = group_receivers_mask_fn
+
+        self.k = k
+        self.edge_attr_names_used = edge_attr_names_used
+        self.ord = ord
+        self.mode = mode
+        assert ord != 0 or len(edge_attr_names_used) == 1
+
+    @property
+    def main_name(self) -> str:
+        """Main name of the transform function"""
+        return "LockKNearestGroupSendersToGroupReceivers"
+    
+    @property
+    def params_repr(self) -> str:
+        """Representation of the parameters of the transform function"""        
+        return str(self.k)
+
+    @property
+    def name(self) -> str:
+        """Name of the transform function used for authentificate"""
+        return self.main_name + "-" + self.params_repr
+    
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        config = {"name":"LockKNearestGroupSendersToGroupReceivers", 
+                  "parameters":{"verbose":self.verbose,
+                                "group_senders_mask_fn":self.group_senders_mask_fn.__name__,
+                                "group_receivers_mask_fn":self.group_receivers_mask_fn.__name__,
+                                "k":self.k,
+                                "edge_attr_names_used":self.edge_attr_names_used,
+                                "ord":self.ord,
+                                "mode":self.mode
+                                }
+        }
+        return config
+
+    def transform(self, 
+                  edge_index:np.ndarray, 
+                  edge_attr: pd.DataFrame | None = None, 
+                  x: pd.DataFrame | None = None, 
+                  y: pd.DataFrame | None = None,
+                  edge_locked: np.ndarray | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
+        edge_index, edge_attr, x, y, new_edge_locked = super().transform(edge_index, edge_attr, x, y, edge_locked)
+
+        if self.verbose:
+            print("Number of Edges Locked before transform:", new_edge_locked.sum())
+
+        is_sender_selected = self.group_senders_mask_fn(x)
+        is_receiver_selected = self.group_receivers_mask_fn(x)
+                  
+        is_edge_selected = np.zeros(edge_index.shape,dtype=bool)
+        is_edge_selected[0,:] = is_sender_selected[edge_index[0,:]]
+        is_edge_selected[1,:] = is_receiver_selected[edge_index[1,:]]
+        is_edge_selected = is_edge_selected[0,:] * is_edge_selected[1,:]
+
+
+        if len(self.edge_attr_names_used) >= 1:
+            if self.ord == 0:
+                edge_dist = edge_attr[self.edge_attr_names_used].values.flatten()
+            else:
+                edge_dist = np.linalg.norm(edge_attr[self.edge_attr_names_used], ord=self.ord, axis=1)
+
+            # from receiver point of view
+            receiver_ids = np.where(is_receiver_selected)[0]
+            for node_id in np.unique(receiver_ids):
+                edge_node_receiver = edge_index[1,:] == node_id
+                edge_from_sender_to_node_receiver = edge_node_receiver * is_edge_selected
+                edge_candidate_ids = np.where(edge_from_sender_to_node_receiver)[0]
+                node_dist_from_sender = edge_dist[edge_candidate_ids]
+                if self.mode == "min":
+                    kept_k_sender_edges = np.argsort(node_dist_from_sender)[:self.k]
+                else:
+                    kept_k_sender_edges = np.argsort(node_dist_from_sender)[-self.k:]
+                new_edge_locked[edge_candidate_ids[kept_k_sender_edges]] = True
+
+        new_edge_index = copy.deepcopy(edge_index)
+        new_edge_attr = copy.deepcopy(edge_attr)
+        new_x = copy.deepcopy(x)
+        new_y = copy.deepcopy(y)
+        
+        if self.verbose:
+            print("Number of Edges Locked after transform:", new_edge_locked.sum())
+
+        return new_edge_index, new_edge_attr, new_x, new_y, new_edge_locked
+
+
+class LockGroupSendersToGroupReceivers(EdgeTransformator):
+    def __init__(
+        self,
+        group_senders_mask_fn: callable,
+        group_receivers_mask_fn: callable,
+        verbose: bool = True,
+        unlock: bool = False
+    ):
+        """
+        Parameters:
+        -----------
+        - upper : (bool)
+            if True, keep edges with distance greater or equal to threshold. Else, lower or equal to threshold.
+        """
+        super().__init__(verbose)
+
+        self.group_senders_mask_fn = group_senders_mask_fn
+        self.group_receivers_mask_fn = group_receivers_mask_fn
+        self.unlock = unlock
+
+    @property
+    def main_name(self) -> str:
+        """Main name of the transform function"""
+        return "LockGroupSendersToGroupReceivers"
+    
+    @property
+    def params_repr(self) -> str:
+        """Representation of the parameters of the transform function"""        
+        return str(self.k)
+
+    @property
+    def name(self) -> str:
+        """Name of the transform function used for authentificate"""
+        return self.main_name + "-" + self.params_repr
+    
+    def get_config(self):
+        """Get the configuration of the validation handler: {"name": ..., "parameters": ...}"""
+        config = {"name":"LockGroupSendersToGroupReceivers", 
+                  "parameters":{"verbose":self.verbose,
+                                "group_senders_mask_fn":self.group_senders_mask_fn.__name__,
+                                "group_receivers_mask_fn":self.group_receivers_mask_fn.__name__,
+                                "unlock":self.unlock
+                                }
+        }
+        return config
+
+    def transform(self, 
+                  edge_index:np.ndarray, 
+                  edge_attr: pd.DataFrame | None = None, 
+                  x: pd.DataFrame | None = None, 
+                  y: pd.DataFrame | None = None,
+                  edge_locked: np.ndarray | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
+        edge_index, edge_attr, x, y, new_edge_locked = super().transform(edge_index, edge_attr, x, y, edge_locked)
+
+        if self.verbose:
+            print("Number of Edges Locked before transform:", new_edge_locked.sum())
+
+        is_sender_selected = self.group_senders_mask_fn(x)
+        is_receiver_selected = self.group_receivers_mask_fn(x)
+                  
+        is_edge_selected = np.zeros(edge_index.shape,dtype=bool)
+        is_edge_selected[0,:] = is_sender_selected[edge_index[0,:]]
+        is_edge_selected[1,:] = is_receiver_selected[edge_index[1,:]]
+        is_edge_selected = is_edge_selected[0,:] * is_edge_selected[1,:]
+        
+        if self.unlock:
+            new_edge_locked[is_edge_selected] = False
+        else:
+            new_edge_locked[is_edge_selected] = True
+        
+        new_edge_index = copy.deepcopy(edge_index)
+        new_edge_attr = copy.deepcopy(edge_attr)
+        new_x = copy.deepcopy(x)
+        new_y = copy.deepcopy(y)
+
+        if self.verbose:
+            print("Number of Edges Locked after transform:", new_edge_locked.sum())
+
+        return new_edge_index, new_edge_attr, new_x, new_y, new_edge_locked
+
 
 #### Training samples selection
 
@@ -996,7 +1580,8 @@ class PreprocessingPipeline():
             edge_index:np.ndarray, 
             edge_attr: pd.DataFrame | None = None, 
             x: pd.DataFrame | None = None, 
-            y: pd.DataFrame | None = None):
+            y: pd.DataFrame | None = None,
+            edge_locked: np.ndarray | None = None,):
         
         for transformator in self.transformators:
             print("PreprocessingPipeline fits",transformator)
@@ -1004,14 +1589,16 @@ class PreprocessingPipeline():
                 edge_index=edge_index,
                 edge_attr=edge_attr,
                 x=x,
-                y=y
+                y=y,
+                edge_locked=edge_locked
             )
             # still need to transform for the next transformators that may depend on previous transformations
-            edge_index,edge_attr,x,y = transformator.transform(
+            edge_index,edge_attr,x,y, edge_locked = transformator.transform(
                 edge_index=edge_index,
                 edge_attr=edge_attr,
                 x=x,
-                y=y
+                y=y,
+                edge_locked=edge_locked
             )
         
         return self
@@ -1020,7 +1607,8 @@ class PreprocessingPipeline():
                   edge_index:np.ndarray, 
                   edge_attr: pd.DataFrame | None = None, 
                   x: pd.DataFrame | None = None, 
-                  y: pd.DataFrame | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
+                  y: pd.DataFrame | None = None,
+                  edge_locked: np.ndarray | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
         
         for transformator in self.transformators:
             if self.verbose: 
@@ -1031,7 +1619,8 @@ class PreprocessingPipeline():
                 edge_index=edge_index,
                 edge_attr=edge_attr,
                 x=x,
-                y=y
+                y=y,
+                edge_locked=edge_locked
             )
         
         if self.verbose: 
@@ -1042,20 +1631,23 @@ class PreprocessingPipeline():
                       edge_index:np.ndarray, 
                       edge_attr: pd.DataFrame | None = None, 
                       x: pd.DataFrame | None = None,
-                      y: pd.DataFrame | None = None) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
+                      y: pd.DataFrame | None = None,
+                      edge_locked: np.ndarray | None = None,) -> tuple[np.ndarray,pd.DataFrame|None,pd.DataFrame|None,pd.DataFrame|None]:
         self.fit(
             edge_index=edge_index,
             edge_attr=edge_attr,
             x=x,
-            y=y
+            y=y,
+            edge_locked=edge_locked
         )
         edge_index, edge_attr, x, y = self.transform(
             edge_index=edge_index,
             edge_attr=edge_attr,
             x=x,
-            y=y
+            y=y,
+            edge_locked=edge_locked
         )
-        return edge_index,edge_attr,x,y
+        return edge_index,edge_attr,x,y,edge_locked
     
     
 
@@ -1063,7 +1655,8 @@ class PreprocessingPipeline():
                                   edge_index:np.ndarray, 
                                   edge_attr: pd.DataFrame | None = None, 
                                   x: pd.DataFrame | None = None,
-                                  y: pd.DataFrame | None = None) -> list[Data]:
+                                  y: pd.DataFrame | None = None,
+                                  edge_locked: np.ndarray | None = None,) -> list[Data]:
         """
         Warning: complete_train_mask_selector is applied before any transformator
         """
@@ -1071,7 +1664,8 @@ class PreprocessingPipeline():
         edge_index,edge_attr,x,y = self.fit_transform(edge_index=edge_index,
                                                       edge_attr=edge_attr,
                                                       x=x,
-                                                      y=y)
+                                                      y=y,
+                                                      edge_locked=edge_locked)
         
         dataset = []
         for i in range(len(train_val_sets)):
@@ -1084,7 +1678,8 @@ class PreprocessingPipeline():
                 y = torch.Tensor(y.values), 
                 y_names = y.columns.tolist(),
                 train_mask = torch.Tensor(train_val_sets[i][0]), 
-                val_mask = torch.Tensor(train_val_sets[i][1])
+                val_mask = torch.Tensor(train_val_sets[i][1]),
+                edge_locked = torch.Tensor(edge_locked).to(torch.bool)
             )
             dataset.append(data_graph)
         

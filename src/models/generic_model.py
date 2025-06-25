@@ -109,7 +109,7 @@ class GenericModel(ABC):
     
     @abstractmethod
     def get_config(self):
-        """get configuration for the model"""
+        """get configuration for the model. Should provide n_free_params"""
         pass
 
     @abstractmethod

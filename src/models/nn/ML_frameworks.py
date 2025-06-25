@@ -35,6 +35,8 @@ import src.models.utils.weight_constrainers as weight_constrainers
 
 
 class GNNFramework(GenericModel):
+    # TODO : Update **kwargs predict everywhere it applies (ex in loss_function)
+
     # Class initialization params
     def __init__(self, 
                  update_node_module, 
@@ -53,12 +55,12 @@ class GNNFramework(GenericModel):
         return model_out
 
     # Compute the loss function   
-    def loss_function(self, node_attr, edge_index, edge_attr, labels, mask):
+    def loss_function(self, node_attr, edge_index, edge_attr, labels, mask, **kwargs):
         node_attr = node_attr.to(self.device)
         edge_index = edge_index.to(self.device)
         edge_attr = edge_attr.to(self.device) if not(edge_attr is None) else None
 
-        preds = self.predict(node_attr, edge_index, edge_attr)
+        preds = self.predict(node_attr, edge_index, edge_attr, **kwargs)
 
         loss_fn = torch.nn.MSELoss()
 
@@ -103,14 +105,14 @@ class GNNFramework(GenericModel):
         return weight_constrainer
     
 
-    def train_step(self, node_attr, edge_index, edge_attr, labels, train_mask, optimizer, weight_constrainer = None, l1_reg = 0, l2_reg = 0):
+    def train_step(self, node_attr, edge_index, edge_attr, labels, train_mask, optimizer, weight_constrainer = None, l1_reg = 0, l2_reg = 0,**kwargs):
         self.update_node_module.train(True)
         # Zero your gradients for every batch!
         optimizer.zero_grad()
 
         # Compute the loss and its gradients
         # mask applied after so that neighbors are taken into account
-        loss = self.loss_function(node_attr, edge_index, edge_attr, labels, train_mask)
+        loss = self.loss_function(node_attr, edge_index, edge_attr, labels, train_mask,**kwargs)
         
         if l1_reg > 0:
             l1_norm = sum(p.abs().sum() for p in self.update_node_module.parameters())
@@ -132,9 +134,9 @@ class GNNFramework(GenericModel):
         self.update_node_module.eval()
         return loss
 
-    def mae_error_function(self, node_attr, edge_index, edge_attr, labels, mask):
+    def mae_error_function(self, node_attr, edge_index, edge_attr, labels, mask,**kwargs):
         # mask applied after so that neighbors are taken into account
-        preds = self.predict(node_attr, edge_index, edge_attr)[mask]
+        preds = self.predict(node_attr, edge_index, edge_attr,**kwargs)[mask]
         mae_loss = torch.nn.L1Loss()
         mae_error = mae_loss(preds, labels[mask])
         mae_error = mae_error.detach()
@@ -149,10 +151,11 @@ class GNNFramework(GenericModel):
             weight_constrainer=None,
             early_stopping_monitor="val_mae", 
             patience=torch.inf, 
-            min_delta=1e-5,
+            min_delta=1e-4,
             l1_reg = 0,
             l2_reg = 0, 
-            verbose=False):
+            verbose=False,
+            **kwargs):
         """Training loop."""
 
         print("== start training ==")
@@ -195,7 +198,8 @@ class GNNFramework(GenericModel):
                     optimizer,
                     weight_constrainer=weight_constrainer,
                     l1_reg=l1_reg,
-                    l2_reg=l2_reg)
+                    l2_reg=l2_reg,
+                    **kwargs)
 
                 with torch.no_grad():
                     train_mae = self.mae_error_function(
@@ -203,7 +207,8 @@ class GNNFramework(GenericModel):
                         batch_edge_index, 
                         batch_edge_attr, 
                         batch_labels, 
-                        batch_train_mask)
+                        batch_train_mask,
+                        **kwargs)
                     
                     if is_validation_present:
                         val_mae = self.mae_error_function(
@@ -211,7 +216,8 @@ class GNNFramework(GenericModel):
                             batch_edge_index, 
                             batch_edge_attr, 
                             batch_labels, 
-                            batch_val_mask)
+                            batch_val_mask,
+                            **kwargs)
 
                 if verbose:
                     txt = "epoch: {epoch:.0f}/{epochs:.0f},\n batch_i: {batch_i:.0f}/{n_batch:.0f},\n batch_size: {batch_size:.0f},\n train_loss: {train_loss:.4f},\n train_mae: {train_mae:.4f},\n val_mae: {val_mae:4f}\n"
@@ -298,7 +304,8 @@ class GNNFramework(GenericModel):
     
     def get_config(self):
         config = {"device":self.device.type,
-                  "update_node_module":self.update_node_module.get_config()}
+                  "update_node_module":self.update_node_module.get_config(),
+                  "n_free_params":self.update_node_module.n_free_params}
         return config
 
     def get_dict_params(self):

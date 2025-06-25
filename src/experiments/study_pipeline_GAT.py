@@ -8,7 +8,7 @@ import torch
 import src.data_handler as data_handler
 
 from src.processing.raw_data_cleaning import prepare_graph_for_participant
-from src.processing.preprocessing import PreprocessingPipeline, SeparatePositiveNegative, PolynomialFeatureGenerator, KeepFeatureNamedSelector, KeepGroupSendersToGroupReceivers, KeepKNearestNeighbors, MaskLowerThanSelector, CrossValidationHandler
+from src.processing.preprocessing import PreprocessingPipeline, SeparatePositiveNegative, PolynomialFeatureGenerator, KeepFeaturesSelector, FilterGroupSendersToGroupReceivers, KeepKNearestNeighbors, MaskLowerThanSelector, CrossValidationHandler
 from src.models.model_pipeline import ModelPipeline
 from src.models.baseline_models import SimpleConvModel
 from src.models.nn.gnn_layers import MyGATConv
@@ -39,16 +39,7 @@ if __name__ == "__main__":
                                                              sim_used=supplementary_config["sim_used"])
 
         preprocessing_pipeline = PreprocessingPipeline(
-            transformators=[
-                KeepGroupSendersToGroupReceivers(
-                    group_senders_mask_fn= lambda x: x["experience"] > 0,
-                    group_receivers_mask_fn= lambda x: x["experience"] <= 0,
-                ),
-                KeepKNearestNeighbors(3,["_sim"]),
-                SeparatePositiveNegative(True,"liking"),
-                PolynomialFeatureGenerator(verbose=True,feature_names_involved=["liking_pos"]),
-                KeepFeatureNamedSelector(verbose=True,feature_names_kept=["liking_pos","liking_neg","liking_pos^2"])
-            ],
+            transformators=[],
             complete_train_mask_selector=MaskLowerThanSelector(feature_name="experience",threshold=0),
             validation_handler=CrossValidationHandler(n_partition=3)
         )

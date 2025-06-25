@@ -593,7 +593,6 @@ def create_grouped_scatter_plot_matrix(data:pd.DataFrame,var:str,join_on:str,gro
     joined_data = None
     for v in  data[group_by].unique():
         data_sample = data[data[group_by] == v]
-        print(f"data_sample v={v}\n",data_sample)
         data_sample = data_sample.rename(columns={var:var+":"+str(v)})
         if joined_data is None:
             joined_data = data_sample
@@ -620,7 +619,7 @@ def create_grouped_scatter_plot_matrix(data:pd.DataFrame,var:str,join_on:str,gro
 
 
 
-def create_grouped_heatmap(data:pd.DataFrame,var:str,fn:str,join_on:str,group_by:str,title:str=""):
+def create_grouped_heatmap(data:pd.DataFrame,var:str,fn:str,join_on:str,group_by:str,title:str="",showticks:bool=True):
     possible_group_values = data[group_by].unique()
 
     # refactor data
@@ -639,20 +638,21 @@ def create_grouped_heatmap(data:pd.DataFrame,var:str,fn:str,join_on:str,group_by
     z = []
     p_values = [] # when used
     if fn == "mean difference y-x":
+        print("mean diff")
         for v_group_y in possible_group_values:
             new_row = []
             for v_group_x in possible_group_values:
-                print("joined_data[var+':'+str(v_group_y)]",joined_data[var+":"+str(v_group_y)])
-                print("joined_data[var+':'+str(v_group_x)]",joined_data[var+":"+str(v_group_x)])
-                print("diff",np.mean(joined_data[var+":"+str(v_group_y)] - joined_data[var+":"+str(v_group_x)]) )
+                print("v_group_x, v_group_y", v_group_x, v_group_y)
                 diff = np.mean(joined_data[var+":"+str(v_group_y)] - joined_data[var+":"+str(v_group_x)])
                 new_row.append(diff)
             z.append(new_row)
 
     elif fn == "mean absolute difference y-x":
+        print("mean diff")
         for v_group_y in possible_group_values:
             new_row = []
             for v_group_x in possible_group_values:
+                print("v_group_x, v_group_y", v_group_x, v_group_y)
                 diff = np.abs(np.mean(joined_data[var+":"+str(v_group_y)] - joined_data[var+":"+str(v_group_x)]))
                 new_row.append(diff)
             z.append(new_row)
@@ -709,7 +709,9 @@ def create_grouped_heatmap(data:pd.DataFrame,var:str,fn:str,join_on:str,group_by
         text=text,
         texttemplate="%{text}"))
 
-    fig.update_layout(title_text=title)
+    fig.update_layout(title_text=title,
+                      xaxis_showticklabels=showticks,
+                      yaxis_showticklabels=showticks)
 
     return fig
 
