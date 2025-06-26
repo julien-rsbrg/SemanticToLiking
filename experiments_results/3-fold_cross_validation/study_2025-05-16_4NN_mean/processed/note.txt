@@ -1,4 +1,0 @@
-This model is meant for blabla...
-Model mathematical formula: $$A = \int_x=a^b x \mbox{d}x$$
-Hypotheses:
-To answer those hypotheses:

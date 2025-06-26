@@ -1,5 +1,0 @@
-name: RandomNormalModel
-parameters:
-  dim_out: 1
-  mean: 0
-  std: 1
