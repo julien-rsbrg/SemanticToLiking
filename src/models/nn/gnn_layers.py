@@ -50,13 +50,25 @@ class MyGATConv(torch_geometric.nn.GATConv):
         src_edge_require_grad: bool = True,
         dst_content_require_grad: bool = True,
         dst_edge_require_grad: bool = True,
+        edge_require_grad: bool = True,
         src_content_weight_initializer: str = "glorot",
         src_edge_weight_initializer: str = "glorot",
         dst_content_weight_initializer: str = "glorot",
         dst_edge_weight_initializer: str = "glorot",
         edge_weight_initializer: str = "glorot",
+        src_content_edge_are_same: bool = False,
+        dst_content_edge_are_same: bool = False,
         **kwargs,
     ):
+        """
+        Parameters
+        ----------
+        - src_content_edge_are_same : (bool)
+            if True, overide the creation of the linear model for src_edge with src_content
+        - dst_content_edge_are_same : (bool)
+            if True, overide the creation of the linear model for dst_edge with dst_content
+        
+        """
         kwargs.setdefault('aggr', 'add')
 
         # need before the reset
@@ -78,18 +90,21 @@ class MyGATConv(torch_geometric.nn.GATConv):
 
         self.n_free_params = 0
 
+        if bias:
+            total_out_channels = out_channels * (heads if concat else 1)
+            self.n_free_params += total_out_channels
+
         self.lin_src = self.lin_dst = None
         if edge_dim is not None:
             self.lin_edge = myLinear(edge_dim, 
                                      heads * out_channels, 
                                      bias=False,
                                      weight_initializer=edge_weight_initializer) # for uniformity
-            self.n_free_params += edge_dim*heads*out_channels
 
 
         # In case we are operating in bipartite graphs, we apply separate
         # transformations 'lin_src' and 'lin_dst' to source and target nodes:
-        if isinstance(in_channels, int) and (src_content_mask is None) and (src_edge_mask is None) and (dst_content_mask is None) and (dst_edge_mask is None):
+        if isinstance(in_channels, int): # and (src_content_mask is None) and (src_edge_mask is None) and (dst_content_mask is None) and (dst_edge_mask is None):
             raise NotImplementedError() # should check forward() in that case
             #self.lin = Linear(in_channels, heads * out_channels, bias=False,weight_initializer='glorot')
         else:
@@ -135,8 +150,9 @@ class MyGATConv(torch_geometric.nn.GATConv):
                                        heads * out_channels, 
                                        bias=False,
                                        weight_initializer=dst_edge_weight_initializer)
-            self.n_free_params += src_edge_in_channels*heads*out_channels*int(src_edge_require_grad)
-            self.n_free_params += dst_edge_in_channels*heads*out_channels*int(dst_edge_require_grad)
+            self.n_free_params += src_edge_in_channels*heads*out_channels*int(src_edge_require_grad)*int(not(src_content_edge_are_same))
+            self.n_free_params += dst_edge_in_channels*heads*out_channels*int(dst_edge_require_grad)*int(not(dst_content_edge_are_same))
+
 
         # In case we are operating in bipartite graphs, we apply separate
         # transformations 'lin_src' and 'lin_dst' to source and target nodes:
@@ -162,6 +178,10 @@ class MyGATConv(torch_geometric.nn.GATConv):
         self.lin_src_edge.set_requires_grad(src_edge_require_grad) 
         self.lin_dst_edge.set_requires_grad(dst_edge_require_grad) 
 
+        if not(self.lin_edge is None):
+            self.lin_edge.set_requires_grad(edge_require_grad) 
+            self.n_free_params += edge_dim*heads*out_channels*int(edge_require_grad)
+
         self.att_src.requires_grad = False
         self.att_dst.requires_grad = False
 
@@ -180,25 +200,43 @@ class MyGATConv(torch_geometric.nn.GATConv):
         self.dst_content_weight_initializer = dst_content_weight_initializer
         self.dst_edge_weight_initializer = dst_edge_weight_initializer
         self.edge_weight_initializer = edge_weight_initializer
+
+        self.src_content_edge_are_same = src_content_edge_are_same
+        self.dst_content_edge_are_same = dst_content_edge_are_same 
+
+        if self.src_content_edge_are_same:
+            self.lin_src_edge = self.lin_src_content
+        if self.dst_content_edge_are_same:
+            self.lin_dst_edge = self.lin_dst_content
+    
+
     
     def reset_parameters(self):
         super().reset_parameters()
+
         if self.lin_src_content is not None:
             self.lin_src_content.reset_parameters()
+
         if self.lin_src_edge is not None:
             self.lin_src_edge.reset_parameters()
+
         if self.lin_dst_content is not None:
             self.lin_dst_content.reset_parameters()
+
         if self.lin_dst_edge is not None:
             self.lin_dst_edge.reset_parameters()
+
+
         if self.lin_edge is not None:
             self.lin_edge.reset_parameters()
             
+
         ones(self.att_src)
         ones(self.att_dst)
         if self.edge_dim is not None:
             ones(self.att_edge)
         zeros(self.bias)
+        
         
 
     def forward(  # noqa: F811
@@ -446,6 +484,8 @@ class MyGATConv(torch_geometric.nn.GATConv):
                 "dst_content_weight_initializer": self.dst_content_weight_initializer,
                 "dst_edge_weight_initializer": self.dst_edge_weight_initializer,
                 "edge_weight_initializer": self.edge_weight_initializer,
+                "src_content_edge_are_same":self.src_content_edge_are_same,
+                "dst_content_edge_are_same":self.dst_content_edge_are_same
             },
             "n_free_params":self.n_free_params
         }
@@ -468,6 +508,9 @@ class MyGATConvNLeaps(MyGATConv):
             out = kwargs["x"].clone()
             kwargs["x"] = out
             for _ in range(self.n_leaps): 
+                print("out\n",out)
+                print("complete_train_mask\n",complete_train_mask)
+                print("out[complete_train_mask]\n",out[complete_train_mask])
                 kwargs["x"][complete_train_mask] = out[complete_train_mask]
                 out = super().forward(**kwargs) 
             kwargs["x"][complete_train_mask] = out[complete_train_mask]

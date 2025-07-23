@@ -53,6 +53,10 @@ class GNNFramework(GenericModel):
 
         model_out = self.update_node_module(node_attr, edge_index, edge_attr, **kwargs)
         return model_out
+    
+    @property
+    def requires_base(self):
+        return False
 
     # Compute the loss function   
     def loss_function(self, node_attr, edge_index, edge_attr, labels, mask, **kwargs):

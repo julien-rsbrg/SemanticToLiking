@@ -3,7 +3,7 @@ install torch-sparse [OK]
 
 TODO
 
-Remove attentional mechanism if wanted in GNN
+Remove attentional mechanism if wanted in GNN [OK]
 
 
 
@@ -55,6 +55,206 @@ Next steps:
 Cool to keep prediction table vs actual liking for error label comparison (participant wise or in general)
 Cool to keep stats on the graph of every participant (maybe elsewhere though)
 
- 
- 
- 
+
+
+====================================================================================================
+====================================================================================================
+====================================================================================================
+
+
+09 - 07 - 2025:
+
+OTHER:
+------
+Robin PhD OK - to continue
+Soirée ce week-end? Seems like no
+DPD Three call
+
+
+Methodo:
+--------
+- Code everything in the methodo and label to be able to go back and forth between the two documents
+- Check the code on previous experiments. Copy-Paste results if required.
+- git push
+- Run the models simulations every nights
+- Save the results every morning on a disc, idem for Obsidian and Zotero
+
+
+
+TODO list:
+
+CAREFUL CAREFUL CAREFUL
+[OK but should drop every previous study]  ToUndirected(reduce="add") should be "mean" 
+[OK scaling participant-wise but should drop every previous study] Scaling function only fit on training group... Apply it only after split in validation, base it on y rather than x (exp 0 have x set to 0) 
+[OK] New graphs in temp_1_3NN_3ExpNN
+
+Comment on N unexperienced vs N experienced activities, the way of creating graphs is actually regularizing - should I do node sampling (data augmentation) though? Check distance from unexp to exp and its dependence in N unexp in the whole graph + compare it when node sampling
+
+[OK] Recreate graphs... KNN should take ord = 0 idem for Locker !!!!!
+
+[OK] # TODO: check it works model_pipeline.py line 87 predict(...)
+
+
+[No use, because take the likelihood or keep comparison at local level] Before analyzing and comparing between participants, rescale back all predictions!
+[OK] plot residuals, QQ plot... are saved at the wrong place...
+I used cpu instead of cuda... seems to go faster actually
+
+Good support from India for testing robustness of GNN/models => do it
+[OK] Setup the server's folder and scripts (^=^)
+
+Correct the data generation for myRBF... change all of the predictions graph + in robust*.py filter for model_fitted and model_to_fit (for ...: continue)
+
+fo analyses
+full_att = src_edge + edge
+src_edge <- src_edge / full_att
+edge <- edge / full_att
+
+Participants:
+-------------
+- [OK] get distribution no exp
+- [OK and interesting] get distribution no exp per activity
+- [OK] get distribution n leaps => look at problem_definition_SemGen
+- [OK] get distribution depression [the threshold for depression is 0-13 minimal depression + add other groups 
+14–19: mild depression
+20–28: moderate depression
+29–63: severe depression]
+- [OK] get mean + std no exp, n leaps, sex, age, depression/not depression => table result
+
+- [OK] get train 0.9 / test split 0.1 => for generalization purposes (Will be used only for group level models, not really only train is OK)
+[JUSTIFIES all the manipulations we make + the several analyses + exploratory data analysis]
+Quote  for stratified random sampling
+@book{thompson_sampling_2012,
+  title={Sampling},
+  author={Thompson, Steven K},
+  volume={755},
+  year={2012},
+  publisher={John Wiley \& Sons}
+}
+
+
+
+Model:
+------
+Implement:
+- [OK!!! - ] GAT bias/no bias, amp liking/no amp liking, att liking/no att liking, edge/no edge = 2⁴ = 16
+- [OK!!! - ] GAT linked amp/att liking = ... x précédent = 4 (bias/no, edge/no, liking)
+- [OK!!! - grid search optim] diffusion kernel (check pipeline) (+ bias/no bias. Don't use that one) = 1
+- [OK!!! - grid search optim] Gaussian Process (+ bias/no bias. Don't implement that one as referred by diffusion kernel results) = 1
+- 2 baseline models: single constant fit to data, mean of others = 2
+= 26 models
+
+
+
+Change and implement in data_handler:
+- [OK] BIC (no approximation), won't work when n = 1 use AICc
+- [OK] AIC (no approximation)
+- [OK] AICc (no approximation) (see Cavanaugh 1996 Unifying the derivations for the Akaike and corrected Akaike
+information criteria AND Hurvich and Tsai (1989) for use in nonlinear regression [Perspectives: free energy]
+
+
+
+Post training:
+- [OK] Plot prediction vs true, residual vs predicted, histogram of residual, QQ plot
+- [OK] Get Shapiro-Wilk test
+- [OK] Protected exceedance probability (will be on AICc and train_MSE directly vs Inference... Wu because no validation)
+[OK] get pxp family of models
+[OK] get pxp all models
+[wait for the actual data for further implem] get pxp presence of a given parameter being trained for GAT x depression severity
++ compare depression vs not depression
++ compare depression severity stratitification
+
+- Get sample size from effect size and power
+
+
+Implement (parameter recovery / identification and model overlap)
+- [OK correct RBF] Data generating process from any complete model of each family (same 10 graphs for all models (MCMC to check no exp distrib) + predictions)
+- [OK correct RBF] Automatic generation / fit with others 10 times per data x model = 10 x 5 x 4 / 2 x = 100 = 1h 
+- Get the matrix of L2 distance of parameters (only for same models)
+- Get the L2 distance matrix from it on predictions vs true data + covariance
+
+
+(check robust to lack of data X base)
+- [OK correct RBF] Do the same with reduction of data X base from original X base. [20,10,5,2] predicted vs [40, 30, 20, 10] base + 10 répétitions for each
+ = 10 x 5 x 4 / 2 x 16 = 1600 = 2 nuits (don't hesitate to compute perf and use log(ratio pred/base))
+- get some info on the reduction that I applied
+
+
+Implement (parameter recovery on participants):
+- [OK - keep same model_name but rerun the train, OK data plot vis_participant_data.ipynb] Train several times the complete model of each family on each participants 5 times and check L2 distances / distribution of parameters
+CHECK it's called recovery for participants though
+
+Overfit all of them on the 3NN3NNExp Graphs, train_MSE early stopping [CAREFUL: not train_MAE but train_MSE]
+= 24 * 100 = 2400 = 3 nights (already 8 models done so 2 nights)
+3 experiment per model family
+
+
+=> Conclude on: 
+(training participants)
+- check normality, unbiasedness... remove if doesn't work on them
+- What is the pxp of each model, ie proba of generating the data more frequently than all other models? 
+- What is the pxp per model family (diffusion kernel, gaussian process, GAT)?
+- What are those pxp (each and family) for depression and not depression?
+
+- From the raw best fit model, what's the results depression / not depression? What is the proba of being depressed knowing that best fit model x?
+# bad question, depends of the amount of people and that the model could actually be the best fit model for someone
+
+
+Participant level
+-----------------
+
+[tasks: depression / not depression LogisticRegression + depression severity (check literature) + # items depression]
+(train participants)
++ 2 steps regression on (hierarchical 1st step: no exp, sex, age - basic ones = 3 params 
+				    + 2nd step: train_MSE = 1 param
+				    + 3nd step: model best fit) = 26 params (also baseline models) (reduce to the only relevant ones, the only one present, the only one with unbalance depression/no depression...)
++ Levene test, homoscedasticity per category (at least age x model best fit)
+(test participants)
+test on test participants
+[ALLOW to compare traditional methods with machine learning new methods + what is expected (logistic vs multi classification vs regression]
+				    
+=> use a 10-fold cross validation strategy for selecting the only models that are relevant for generalization beyond data 
+(use # no exp, sex, age + best fit model as one hot + best fit family model as one hot)
+=> get the main parameters + effect size... If X bases its generalization process on param p, therefore x more chances of being depressed
+=> from the effect size x power, determine the sample size for a replication study
+
+(test participants)
+=> check models on test set
+=> get confusion matrices (2 classification tasks) 
++ fitness on regression task 
+
++++++++++++++++++++++ More detail than just model - get into parameters +++++++++++++++++++++++++
+Keep only the most probable family model
+
+Implement:
+- set the parameters automatically to the best model fit and put the other parameter values to their default ones (the actual model)  
+
+[tasks: depression / not depression + depression severity (check literature) + # items depression]
+
++ 2 steps regression on (hierarchical 1st step: no exp, sex, age - basic ones (3 params)
+				    + 2nd step: train_MSE best model = explanation by the worst model (1 param)
+				    + 3nd step: **model best fit parameters) (jusqu'à (1+1)⁴ = 16 params)
+(test participant)
+test on test participants
+[ALLOW to compare traditional methods with machine learning new methods + what is expected (logistic vs multi classification vs regression]
+				    
+=> use a 10-fold cross validation strategy for selecting the only models that are relevant for generalization beyond data 
+(use # no exp, sex, age, train_MSE + model_best_fit parameters) allow interactions (2^8 = 256 parameters)
+=> get the main parameters + effect size...
+=> from the effect size x power, determine the sample size for a replication study
+
+
+Careful in report: small comment Mean Squared Error = Mean Squared Deviation
+
+
+
+
+
+
+----------------------------------------------------------------------
+Supplements:
+------------
+
+[OK, no improvement] PCA on word_embeddings and check corr with people / corr between people 
+Comment the whole code
+
+Fisher Linear Discriminant Analysis // Cohen - d effect size without the square root or the pooled variance in the denominator (to account for class imbalance)

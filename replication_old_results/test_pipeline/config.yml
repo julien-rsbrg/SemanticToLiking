@@ -1,0 +1,37 @@
+model:
+  n_free_params: 1
+  name: MaternKernelModel
+  parameters:
+    dim_out: 1
+    lengthscale: 0.001
+    nu: .inf
+    use_bias: false
+other:
+  model_fit_params:
+    epochs: 10000
+    report_epoch_steps: 1
+  model_name: MaternKernelInf
+  sim_used: original
+preprocessing_pipeline:
+  base_mask_selector:
+    name: MaskLowerThanSelector
+    parameters:
+      feature_name: experience
+      mode: strict_upper
+      threshold: 0
+      verbose: true
+  complete_train_mask_selector:
+    name: MaskLowerThanSelector
+    parameters:
+      feature_name: experience
+      mode: lower
+      threshold: 0
+      verbose: true
+  transformators: []
+  validation_handler:
+    name: MaskLowerThanSelector
+    parameters:
+      feature_name: experience
+      mode: lower
+      threshold: 0
+      verbose: true

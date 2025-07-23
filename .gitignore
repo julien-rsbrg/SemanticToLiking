@@ -1,5 +1,7 @@
 data
+save
 
 venv*
+perso*
 
 experiments_results

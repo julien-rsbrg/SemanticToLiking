@@ -9,7 +9,7 @@ import torch
 import src.data_handler as data_handler
 
 from src.processing.raw_data_cleaning import prepare_graph_for_participant
-from src.processing.preprocessing import PreprocessingPipeline, SeparatePositiveNegative, PolynomialFeatureGenerator, KeepNodeFeaturesSelector, FilterGroupSendersToGroupReceivers, KeepKNearestNeighbors, MaskLowerThanSelector, CrossValidationHandler
+from src.processing.preprocessing import PreprocessingPipeline, SeparatePositiveNegative, PolynomialFeatureGenerator, KeepNodeFeaturesSelector, FilterGroupSendersToGroupReceivers, KeepKNearestNeighbors, MaskLowerThanSelector, NoValidationHandler, CrossValidationHandler
 from src.models.model_pipeline import ModelPipeline
 from src.models.baseline_models import SimpleConvModel
 from src.models.nn.gnn_layers import MyGATConv, MyGATConvNLeaps

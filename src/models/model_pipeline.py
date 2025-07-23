@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+import torch
 
 from torch_geometric.data import Data
 
@@ -50,14 +51,12 @@ class ModelPipeline():
             self.model.save(os.path.join(subfolder_graph_path,"model_init"))
             self.model.save_parameters(os.path.join(subfolder_graph_path,"model_params_init"))
 
+
             history = self.model.fit(dataset=[graph],**kwargs)
             history = pd.DataFrame(history)
             history.to_csv(os.path.join(subfolder_graph_path,"history.csv"))
 
-            pred_values = self.model.predict(node_attr=graph.x, 
-                                             edge_index=graph.edge_index, 
-                                             edge_attr=graph.edge_attr,
-                                             **kwargs)
+            pred_values = self.predict(graph=graph, data_state="preprocessed")
             true_values = graph.y
 
             prediction_table = {"pred_values":pred_values.detach().cpu().numpy().flatten(),
@@ -73,7 +72,7 @@ class ModelPipeline():
             
             self.model.reset_parameters()
     
-    def predict(self,graph:Data, data_state:str = "raw"):
+    def predict(self, graph:Data, data_state:str = "raw"):
         """
         Parameters
         ----------
@@ -83,8 +82,19 @@ class ModelPipeline():
         assert data_state in ["raw","preprocessed"], data_state
         if data_state == "raw":
             graph = self.run_preprocessing(graph)[0]
-        pred_values = self.model.predict(node_attr=graph.x, 
-                                         edge_index=graph.edge_index, 
-                                         edge_attr=graph.edge_attr)
+
+        assert not(self.model.requires_base) or hasattr(graph,"base_mask")
+        
+        # TODO: check it works
+        # x_pred_mask, x_pred_mask, x_pred_mask, y_base for diffusion kernel (ex: MaternKernelModel)
+        # complete_train_mask for ...ConvNLeaps
+        pred_values = self.model.predict(node_attr = graph.x, 
+                                         edge_index = graph.edge_index, 
+                                         edge_attr = graph.edge_attr,
+                                         x_pred_mask = torch.ones(graph.num_nodes).to(bool), 
+                                         x_base_mask = graph.base_mask if hasattr(graph,"base_mask") else None,
+                                         y_base = graph.y[graph.base_mask] if hasattr(graph,"base_mask") else None,
+                                         num_nodes = graph.num_nodes,
+                                         complete_train_mask = graph.complete_train_mask) 
         
         return pred_values

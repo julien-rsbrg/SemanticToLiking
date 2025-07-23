@@ -1,0 +1,7 @@
+n_free_params: 1
+name: MaternKernelModel
+parameters:
+  dim_out: 1
+  lengthscale: 0.001
+  nu: .inf
+  use_bias: false

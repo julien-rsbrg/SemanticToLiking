@@ -3,8 +3,10 @@ import numpy as np
 import torch
 
 import copy
-from torch_geometric.data import Data
 from typing import Iterable
+
+from torch_geometric.data import Data
+import torch_geometric.transforms as T
 
 import seaborn as sns
 import plotly.graph_objects as go
@@ -14,20 +16,45 @@ import statsmodels.formula.api as smf
 
 import src.data_handler as data_handler
 from src.processing.raw_data_cleaning import prepare_graph_for_participant
+import src.utils as utils
 
 from sentence_transformers import SentenceTransformer
 
-def add_edge_L2_dist_to_graph(graph:Data, translator_word_to_index, word_to_embeddings):
-    translator_index_to_word_emb = {v:np.array(word_to_embeddings[k]) for k,v in translator_word_to_index.items()} # will have to add .values when loading 
+def add_edge_L2_dist_to_graph(graph:Data, translator_word_to_index:dict = None, word_to_embeddings:dict = None, x_embeddings_names:list[str]|None = None):
+    assert not((translator_word_to_index is None) and (word_to_embeddings is None)) or not(x_embeddings_names is None)
+    
+    use_index = x_embeddings_names is None
+
+    if use_index:
+        translator_index_to_word_emb = {v:np.array(word_to_embeddings[k]) for k,v in translator_word_to_index.items()} # will have to add .values when loading 
     
     edge_L2_dist = []
     for edge_i in range(graph.edge_index.size(1)):
         sender_id,receiver_id = graph.edge_index[:,edge_i]
         sender_id,receiver_id = int(sender_id), int(receiver_id)
-        L2_dist = np.linalg.norm(translator_index_to_word_emb[receiver_id] - translator_index_to_word_emb[sender_id])
+        if use_index:
+            L2_dist = np.linalg.norm(translator_index_to_word_emb[receiver_id] - translator_index_to_word_emb[sender_id])
+        else:
+            x = pd.DataFrame(graph.x,columns=graph.x_names)
+            L2_dist = np.linalg.norm(x.loc[receiver_id,x_embeddings_names] - x.loc[sender_id,x_embeddings_names])
         edge_L2_dist.append([L2_dist])
 
-    graph.edge_L2_dist = torch.Tensor(edge_L2_dist)
+    graph.edge_attr = torch.concat([graph.edge_attr,torch.Tensor(edge_L2_dist)],dim=1)
+    graph.edge_attr_names += ["L2_dist"] 
+
+    # ensure there is only that last L2_dist in edge_attr_names
+    kept_edge_attr = torch.ones(len(graph.edge_attr_names)).to(bool)
+    kept_edge_attr_names = []
+    for i,edge_attr_name in enumerate(graph.edge_attr_names[:-1]):
+        if edge_attr_name == "L2_dist":
+            kept_edge_attr[i] = False
+        else:
+            kept_edge_attr_names.append(edge_attr_name)
+    
+    kept_edge_attr_names += ["L2_dist"]
+    graph.edge_attr = graph.edge_attr[:,kept_edge_attr]
+    graph.edge_attr_names = kept_edge_attr_names
+
     return graph
 
 
@@ -209,3 +236,78 @@ if __name__ == "__main__":
 
     all_node_data.to_csv(f"data/processed/node_data/distance_cluster.csv")
 
+
+
+
+
+
+
+def merge_graphs_edges(edge_index_0:np.ndarray,edge_index_1:np.ndarray,edge_attr_0:pd.DataFrame|None = None,edge_attr_1:pd.DataFrame|None = None):
+    res_edge_index = copy.deepcopy(edge_index_0)
+    edge_index_dist = utils.compute_vector_distance(res_edge_index.T,edge_index_1.T)
+    edge_index_null_dist = np.isclose(edge_index_dist,0)
+    edge_index_null_dist = np.sum(edge_index_null_dist,axis=0)
+    edge_index_id_no_rep = np.where(edge_index_null_dist==0)[0]
+    res_edge_index = np.concatenate([res_edge_index,edge_index_1[:,edge_index_id_no_rep]],axis=1)
+
+    if not(edge_attr_0 is None or edge_attr_1 is None):
+        assert len(set(edge_attr_0.columns.tolist()).intersection(set(edge_attr_1.columns.tolist()))) == len(edge_attr_0.columns.tolist()), (edge_attr_0.columns,edge_attr_1.columns)
+        res_edge_attr = pd.concat([edge_attr_0,edge_attr_1.iloc[edge_index_id_no_rep]],axis=0).reset_index(drop = True)
+    else:
+        res_edge_attr = None
+    
+    return res_edge_index, res_edge_attr
+
+
+
+def shortest_paths_from_cluster(edge_index:np.array,
+                                edge_weight:Iterable,
+                                cluster:np.ndarray[bool],
+                                exclude_itself:bool=True):
+    _cluster = copy.copy(cluster)
+    num_nodes = len(_cluster)
+
+    node_ids_cluster = np.where(_cluster)[0]
+
+    node_ids_not_cluster = np.where(~_cluster)[0]
+    node_to_browse = node_ids_not_cluster
+    if not(exclude_itself):
+        node_to_browse = np.arange(num_nodes)
+    
+    node_to_dist_from_cluster, node_to_shortest_path_from_cluster = np.inf*np.ones(num_nodes), dict()
+
+    for i in node_ids_cluster:
+        dist_from_i, shortest_path_from_i = shortest_path_djikstra(node_start=i,
+                                                                           edge_index=edge_index,
+                                                                           edge_weight=edge_weight,
+                                                                           num_nodes=num_nodes)
+        
+        for j in node_to_browse:
+            if node_to_dist_from_cluster[j] > dist_from_i[j] and i != j:
+                node_to_dist_from_cluster[j] = dist_from_i[j]
+                node_to_shortest_path_from_cluster[j] = {i:shortest_path_from_i[j]}
+    return node_to_dist_from_cluster, node_to_shortest_path_from_cluster
+
+
+
+def get_n_leaps_from_cluster(edge_index:np.ndarray,edge_weight:np.ndarray,cluster_mask:np.ndarray[bool],num_nodes:int):
+    _, _shortest_paths_from_cluster = shortest_paths_from_cluster(
+            edge_index=edge_index,
+            edge_weight=edge_weight,
+            cluster=cluster_mask,
+            exclude_itself=False
+    )
+    node_id_to_n_leaps = np.inf * np.ones(num_nodes)
+    for node_id in range(num_nodes):
+        if node_id in _shortest_paths_from_cluster:
+            n_leaps = len(next(iter(_shortest_paths_from_cluster[node_id].values()))["edge_index"])
+            node_id_to_n_leaps[node_id] = n_leaps
+
+    return node_id_to_n_leaps
+
+
+def count_isolated_nodes(graph:Data):
+    start_num_nodes = graph.num_nodes
+    transform = T.Compose([T.RemoveIsolatedNodes()])
+    end_num_nodes = transform(graph).num_nodes
+    return start_num_nodes - end_num_nodes

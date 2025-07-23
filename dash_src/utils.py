@@ -213,3 +213,30 @@ def get_slider_params(var_values:pd.Series,ticks_per_range:int,n_potential_value
   return vmin,vmax,step,marks
 
 
+
+def refactor_data(data:pd.DataFrame, var:str, join_on:str, group_by:str, join_on_aggr:str = "mean"):
+  possible_group_values = data[group_by].unique()
+
+  joined_data = None
+  for v in possible_group_values:
+    data_sample = data[data[group_by] == v]
+        
+    data_sample = data_sample.rename(columns={var:var+":"+str(v)})
+    data_sample = data_sample[[join_on,var+":"+str(v)]]
+    if joined_data is None:
+      joined_data = data_sample
+    else:
+      joined_data = pd.merge(joined_data,data_sample[[join_on, var+":"+str(v)]],on=join_on,how="outer")
+
+  joined_data = joined_data[[join_on]+[var+":"+str(v) for v in possible_group_values]]
+    
+  if join_on_aggr == "mean":
+    joined_data = joined_data.groupby(join_on).mean()
+  elif join_on_aggr == "min":
+    joined_data = joined_data.groupby(join_on).min()
+  elif join_on_aggr == "max":
+    joined_data = joined_data.groupby(join_on).max()
+  else:
+    raise NotImplementedError(f"Given join_on_aggr: {join_on_aggr}")
+    
+  return joined_data

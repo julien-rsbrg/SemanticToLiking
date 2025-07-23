@@ -1,0 +1,5 @@
+,pred_values,true_values,train_mask,val_mask
+0,15.128905,15.087712,True,False
+1,15.020501,15.057473,True,False
+2,15.4814625,15.349186,False,False
+3,16.0,16.0,False,False

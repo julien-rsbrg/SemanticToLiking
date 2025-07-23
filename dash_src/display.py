@@ -1,6 +1,6 @@
-"""
-Keeps all the functions creating figures
-"""
+## Keeps all the functions creating figures
+
+
 
 import numpy as np
 import pandas as pd
@@ -588,18 +588,10 @@ def create_simple_histo(df:pd.DataFrame,var_name:str,nbinsx:int=20,fig:go.Figure
     return _fig
 
 
-def create_grouped_scatter_plot_matrix(data:pd.DataFrame,var:str,join_on:str,group_by:str,title:str=""):
-    # refactor data
-    joined_data = None
-    for v in  data[group_by].unique():
-        data_sample = data[data[group_by] == v]
-        data_sample = data_sample.rename(columns={var:var+":"+str(v)})
-        if joined_data is None:
-            joined_data = data_sample
-        else:
-            joined_data = pd.merge(joined_data,data_sample[[join_on, var+":"+str(v)]],on=join_on,how="outer")
 
-    joined_data = joined_data[[join_on]+[var+":"+str(v) for v in data[group_by].unique()]]
+
+def create_grouped_scatter_plot_matrix(data:pd.DataFrame,var:str,join_on:str,group_by:str,join_on_aggr:str="mean",title:str=""):
+    joined_data = utils.refactor_data(data = data, var = var, join_on = join_on, group_by = group_by, join_on_aggr = join_on_aggr)
 
     # collect data
     dimensions = []
@@ -619,21 +611,20 @@ def create_grouped_scatter_plot_matrix(data:pd.DataFrame,var:str,join_on:str,gro
 
 
 
-def create_grouped_heatmap(data:pd.DataFrame,var:str,fn:str,join_on:str,group_by:str,title:str="",showticks:bool=True):
+def create_grouped_heatmap(data:pd.DataFrame,var:str,fn:str,join_on:str,group_by:str,join_on_aggr:str="mean",title:str="",showticks:bool=True):
+    """
+    A
+
+    Arguments
+    ---------
+    - join_on_aggr : (str), default 'mean'
+        choose how to aggregate the values of var for when there are several values for a group and a value of join_on
+        
+    """
     possible_group_values = data[group_by].unique()
 
-    # refactor data
-    joined_data = None
-    for v in possible_group_values:
-        data_sample = data[data[group_by] == v]
-        data_sample = data_sample.rename(columns={var:var+":"+str(v)})
-        if joined_data is None:
-            joined_data = data_sample
-        else:
-            joined_data = pd.merge(joined_data,data_sample[[join_on, var+":"+str(v)]],on=join_on,how="outer")
+    joined_data = utils.refactor_data(data = data, var = var, join_on = join_on, group_by = group_by, join_on_aggr = join_on_aggr)
 
-    joined_data = joined_data[[join_on]+[var+":"+str(v) for v in possible_group_values]]
-    
     # apply function
     z = []
     p_values = [] # when used

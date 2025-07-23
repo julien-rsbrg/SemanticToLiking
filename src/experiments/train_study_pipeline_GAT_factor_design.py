@@ -4,44 +4,70 @@ import copy
 import itertools
 
 import pandas as pd
-import numpy as np
 import torch
 
 
 import src.data_handler as data_handler
 
-from src.processing.raw_data_cleaning import prepare_graph_for_participant
-from src.processing.preprocessing import PreprocessingPipeline, SeparatePositiveNegative, PolynomialFeatureGenerator, KeepNodeFeaturesSelector, FilterGroupSendersToGroupReceivers, KeepKNearestNeighbors, MaskLowerThanSelector, NoValidationHandler, CrossValidationHandler
+from src.processing.preprocessing import PreprocessingPipeline, MaskThreshold, KeepMonotonousNodeAttr, KeepNodeFeaturesSelector, NoValidationHandler
 from src.models.model_pipeline import ModelPipeline
-from src.models.baseline_models import SimpleConvModel
-from src.models.nn.gnn_layers import MyGATConv, MyGATConvNLeaps
+from src.models.nn.gnn_layers import MyGATConvNLeaps
 from src.models.nn.ML_frameworks import GNNFramework
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+train_or_test = 'train'
 
+"""
 factor_to_levels = {
     "bias":[False,True],
     # check whether the intercept is necessary in the model
     "attention_liking":[False,True],
     # check whether the individual has biased attention based on the liking of the activity
-    "amplification_liking":[False,True]
+    "amplification_liking":[False,True],
+    "edge":[False,True],
+    "combine_att_amp_liking":[False]
 }
 
 poss_combinations = list(itertools.product(*factor_to_levels.values()))
-poss_combinations = list(set(poss_combinations) - {(True, True, True)})
+"""
+
+factor_to_levels = {
+    "bias":[False,True],
+    # check whether the intercept is necessary in the model
+    "attention_liking":[True],
+    # check whether the individual has biased attention based on the liking of the activity
+    "amplification_liking":[True],
+    "edge":[False,True],
+    "combine_att_amp_liking":[True]
+}
+
+poss_combinations = list(itertools.product(*factor_to_levels.values()))
+
+# if some combinations are already carried: 
+poss_combinations = list(set(poss_combinations) - 
+                         {(False, False, False, False, False),
+                          (False, False, False, True, False),
+                          (False, False, True, False, False),
+                          (False, False, True, True, False),
+                          (False, True, False, False, False),
+                          (False, True, False, True, False),
+                          (False, True, True, False, False),
+                          (False, True, True, True, False),
+                          (True, False, False, False, False),
+                          (True, False, False, True, False)})
 
 
 
 if __name__ == "__main__":
     all_model_names = []
     all_study_time_taken = []
-    for use_bias, att_liking, amp_liking in poss_combinations:
+    for use_bias, att_liking, amp_liking, edge, combine_att_amp in poss_combinations:
         study_time_start = time.time()
-        model_name = f"GAT_liking_sim_amp_3NN_3ExpNN_no_val_bias-{use_bias}_att-liking-{att_liking}_amp-liking-{amp_liking}"
+        model_name = f"GAT_liking_sim_amp_3NN_3ExpNN_no_val_bias-{use_bias}_att-liking-{att_liking}_amp-liking-{amp_liking}_edge-{edge}_comb-att-amp-{combine_att_amp}"
         all_model_names.append(model_name)
 
         study_name = pd.to_datetime("today").strftime("%Y-%m-%d_%H-%M_")+f"_{model_name}"
-        study_folder_path = os.path.join("experiments_results/3-fold_cross_validation",study_name)
+        study_folder_path = os.path.join(f"experiments_results/no_validation_07",train_or_test,study_name)
         study_raw_folder_path = os.path.join(study_folder_path,"raw")
         
         supplementary_config = {
@@ -49,13 +75,15 @@ if __name__ == "__main__":
             "sim_used":"original",
             "model_fit_params":{}}
 
-        participant_indices = np.arange(1,113)
-        for participant_id in participant_indices:
+        participant_graph_names = os.listdir(os.path.join("data/temp_1_3NN_3ExpNN",train_or_test))
+        for participant_i, participant_graph_name in enumerate(participant_graph_names):   
+            participant_id = int(participant_graph_name.split("_")[-1])
+
             time_start_participant = time.time()
-            print(f"start participant_id/(n_participants-1):{participant_id:d}/{len(participant_indices-1):d}")
+            print(f"start (participant_i+1)/(n_participants-1):{participant_i+1:d}/{len(participant_graph_names):d}")
             dst_folder_path = os.path.join(study_raw_folder_path,f"participant_{participant_id:d}")
             
-            participant_graph = torch.load(f"data/temp_3NN_3ExpNN/participant_graph_{participant_id}",weights_only=False)
+            participant_graph = torch.load(f"data/temp_1_3NN_3ExpNN/{train_or_test}/participant_graph_{participant_id}",weights_only=False)
 
             if participant_graph is None:
                 print(f"{participant_id} is None")
@@ -63,9 +91,18 @@ if __name__ == "__main__":
 
             validation_handler = NoValidationHandler()
             preprocessing_pipeline = PreprocessingPipeline(
-                transformators=[],
-                complete_train_mask_selector=MaskLowerThanSelector(feature_name="experience",threshold=0),
-                validation_handler=validation_handler
+                transformators=[
+                    KeepMonotonousNodeAttr(
+                        node_attr_name_used = "leaps_from_cluster",
+                        ascending = True,
+                        strict = True
+                    ), # remove the undirectedness of the graph
+                    KeepNodeFeaturesSelector(True,
+                                             feature_names_kept=["liking"])
+                ],
+                complete_train_mask_selector=MaskThreshold(feature_name="experience",threshold=0),
+                validation_handler=validation_handler,
+                base_mask_selector=None
             )
 
             dim_in = 1
@@ -88,9 +125,11 @@ if __name__ == "__main__":
                 src_edge_mask=src_edge_mask,
                 dst_content_mask=dst_content_mask,
                 dst_edge_mask=dst_edge_mask,
-                src_content_require_grad=amp_liking,
                 src_content_weight_initializer="glorot" if amp_liking else "ones",
-                edge_weight_initializer="glorot")
+                edge_weight_initializer="glorot" if edge else "ones",
+                src_content_require_grad=amp_liking,
+                edge_require_grad=edge,
+                src_content_edge_are_same = combine_att_amp)
 
 
             ## Training
@@ -125,7 +164,8 @@ if __name__ == "__main__":
             model_pipeline = ModelPipeline(
                 preprocessing_pipeline=preprocessing_pipeline,
                 model=complete_model,
-                dst_folder_path=dst_folder_path)
+                dst_folder_path=dst_folder_path
+            )
                 
             _supplementary_config = copy.copy(supplementary_config) # for saving
             _supplementary_config["model_fit_params"] = dict(
@@ -137,31 +177,21 @@ if __name__ == "__main__":
             )
 
             model_pipeline.save_config(supplementary_config = _supplementary_config)
-
-            complete_train_mask = participant_graph.complete_train_mask
-            train_val_sets = validation_handler.apply(complete_train_mask)
-
-            graphs_dataset = []
-            for i in range(len(train_val_sets)):
-                data_graph = participant_graph.clone()
-                data_graph.train_mask = torch.Tensor(train_val_sets[i][0])
-                data_graph.val_mask = torch.Tensor(train_val_sets[i][1])
-                graphs_dataset.append(data_graph)
-
+            graphs_dataset = model_pipeline.run_preprocessing(graph = participant_graph)
+            print("graphs_dataset\n",graphs_dataset)
             model_pipeline.run_models(graphs_dataset=graphs_dataset, **supplementary_config["model_fit_params"])
 
             time_end_participant = time.time()
 
-            print(f"end participant_id/n_participants-1:{participant_id:d}/{len(participant_indices-1):d}")
+            print(f"end (participant_i+1)/n_participants-1:{participant_i+1:d}/{len(participant_graph_names):d}")
             participant_time_taken = time.time()-time_start_participant
             print("participant time taken: {}h - {}m - {:.4f}s".format(participant_time_taken//(3600),((participant_time_taken%3600)//60),((participant_time_taken%3600)%60)))
-        
 
         study_time_taken = time.time()-study_time_start
         all_study_time_taken.append(study_time_taken)
         print("study time taken: {}h - {}m - {:.4f}s".format(study_time_taken//(3600),((study_time_taken%3600)//60),((study_time_taken%3600)%60)))
         data_handler.postprocess(study_raw_folder_path,os.path.join(study_folder_path,"processed"))
-    
+
     print("\n== Report time durations ==")
     for i in range(len(all_model_names)):
         print(f"model {all_model_names[i]}" + " time taken: {}h - {}m - {:.4f}s".format(all_study_time_taken[i]//(3600),((all_study_time_taken[i]%3600)//60),((all_study_time_taken[i]%3600)%60)))

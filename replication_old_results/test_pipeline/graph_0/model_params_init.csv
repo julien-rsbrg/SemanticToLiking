@@ -1,0 +1,2 @@
+,dim_out,nu,lengthscale,use_bias
+0,1,inf,0.001,False

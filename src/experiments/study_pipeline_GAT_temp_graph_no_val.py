@@ -20,9 +20,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 if __name__ == "__main__":
     study_time_start = time.time()
 
-    model_name = "GAT_liking_sim_amp_3NN_3ExpNN_no_val"
+    model_name = "3NN_3ExpNN_constant"
     study_name = pd.to_datetime("today").strftime("%Y-%m-%d_%H-%M_")+f"_{model_name}"
-    study_folder_path = os.path.join("experiments_results/3-fold_cross_validation",study_name)
+    study_folder_path = os.path.join("experiments_results/no_validation",study_name)
     study_raw_folder_path = os.path.join(study_folder_path,"raw")
     
     supplementary_config = {
@@ -46,13 +46,14 @@ if __name__ == "__main__":
         preprocessing_pipeline = PreprocessingPipeline(
             transformators=[],
             complete_train_mask_selector=MaskLowerThanSelector(feature_name="experience",threshold=0),
-            validation_handler=validation_handler
+            validation_handler=validation_handler,
+            base_mask_selector=None
         )
 
         dim_in = 1
 
-        src_content_mask = torch.Tensor([True]*dim_in).to(torch.bool)
-        src_edge_mask = torch.Tensor([True]*dim_in).to(torch.bool)
+        src_content_mask = torch.Tensor([False]*dim_in).to(torch.bool)
+        src_edge_mask = torch.Tensor([False]*dim_in).to(torch.bool)
         dst_content_mask = torch.Tensor([False]*dim_in).to(torch.bool)
         dst_edge_mask = torch.Tensor([False]*dim_in).to(torch.bool)
         my_module = MyGATConvNLeaps(
@@ -69,10 +70,10 @@ if __name__ == "__main__":
             src_edge_mask=src_edge_mask,
             dst_content_mask=dst_content_mask,
             dst_edge_mask=dst_edge_mask,
-            src_content_require_grad=True,
-            src_content_weight_initializer="glorot",
-            edge_weight_initializer="glorot")
-
+            src_content_require_grad=False,
+            edge_require_grad=False,
+            src_content_weight_initializer="zeros",
+            edge_weight_initializer="zeros")
 
         ## Training
         complete_model = GNNFramework(my_module,device)

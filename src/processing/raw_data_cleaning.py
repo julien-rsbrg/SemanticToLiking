@@ -127,11 +127,11 @@ def prepare_graph_for_participant(data:pd.DataFrame, participant_id:any, sim_use
 
     # similarity
     if sim_used == "ones":
-        subdata["_sim"] = np.ones(len(subdata))
+        subdata["similarity"] = np.ones(len(subdata))
     elif sim_used == "random":
-        subdata["_sim"] = np.random.rand(len(subdata))
+        subdata["similarity"] = np.random.rand(len(subdata))
     elif sim_used == "original":
-        subdata["_sim"] = subdata["senenceBERT_mpnet_similarity"]
+        subdata["similarity"] = subdata["senenceBERT_mpnet_similarity"]
     else:
         raise NotImplementedError("Don't know sim_used =", sim_used)
 
@@ -139,13 +139,13 @@ def prepare_graph_for_participant(data:pd.DataFrame, participant_id:any, sim_use
         complete_data_table=subdata,
         node_attr_names=["liking","experience"],
         node_label_names=["liking"],
-        edge_attr_names=["_sim"],
+        edge_attr_names=["similarity"],
         return_word_to_index=True)
 
     # scaling only the liking
     node_table = build_node_table(data,["liking"],distinct_id=["participant"])
     scaler_liking = StandardScaler()
-    scaler_liking.fit(node_table.liking.to_numpy()[...,np.newaxis])
+    scaler_liking.fit(participant_graph.x[:,:1])
     transformed_50 = scaler_liking.transform(np.array([[50]]))
 
     # todo create specific scaler function

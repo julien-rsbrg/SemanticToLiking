@@ -14,6 +14,8 @@ def extended_reset_(fun_reset):
             return fun_reset(value,in_channels,initializer)
         elif initializer == "ones":
             inits.ones(value)
+        elif initializer == "zeros":
+            inits.zeros(value)
         else:
             raise RuntimeError(f"Initializer '{initializer}' not supported")
 

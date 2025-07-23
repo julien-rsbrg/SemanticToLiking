@@ -1,7 +1,6 @@
 import collections.abc
 from abc import ABC, abstractmethod
 
-import os
 import pandas as pd
 
 from src.utils import flatten_dict, ensure_one_dim_dict
@@ -47,6 +46,12 @@ class ForceFitOutputs():
     
 
 class GenericModel(ABC):
+    @property
+    @abstractmethod
+    def requires_base(self):
+        """Whether there is a base of nodes required for model predictions"""
+        pass
+
     @abstractmethod
     def fit(self,dataset,val_dataset = None, **kwargs) -> tuple[any,dict]:
         """fit the model to the dataset"""
@@ -116,36 +121,3 @@ class GenericModel(ABC):
     def get_dict_params(self):
         """get a dictionary of the model's parameters"""
         pass
-
-
-
-################
-"""
-class GNNFrameworkWrapper(GenericModel):
-    def __init__(self,
-                 model:GNNFramework,
-                 optimizer_lr:float=1e-3,
-                 scheduler_start_lr:float=1e-3,
-                 scheduler_end_lr:float=1e-3,
-                 scheduler_total_ites:int=1
-                 ):
-        self.model = model
-        self.optimizer = self.model.configure_optimizer(lr=optimizer_lr)
-        self.scheduler = self.model.configure_scheduler(self.optimizer, scheduler_start_lr, scheduler_end_lr, scheduler_total_ites)
-
-        self.fit = FilterKwargs(kept_keywords={"dataset","val_dataset"})(self.fit)
-        self.fit = ForceFitOutputs()(self.fit)
-        self.predict = FilterKwargs(kept_keywords=self.predict_param_names)(self.model.predict)
-
-
-    def fit(self,dataset,val_dataset,**kwargs):
-        self.model.train(
-            dataset=dataset,
-            val_dataset=val_dataset,
-            epochs=kwargs["epochs"] 
-        )
-
-
-    def predict(self,data):
-        pass
-"""
